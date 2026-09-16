@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "**"
+
+  pull_request:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+jobs:
+  run-tests:
+    name: Run tests
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    strategy:
+      # Every version is run, so one failing says which one rather than stopping the others.
+      fail-fast: false
+      matrix:
+        # 22.6 is the oldest the tool runs on, because it is where Node started running TypeScript
+        # without a build. 24 is the current release, which is what most people have.
+        node: ["22.x", "24.x"]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Check the types
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+      - name: Run the unit tests
+        run: node --test --test-timeout=600000 "src/**/*.test.ts"
+
+  # Each example starts processes of its own, so one runner takes minutes over them. A runner per
+  # shard is what keeps the suite short.
+  examples:
+    name: Examples ${{ matrix.shard }} of 3
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # One example runs the code under test in a real browser, because code that reads a document
+      # has nowhere else to run.
+      - name: Install the browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run the examples
+        run: bash scripts/smoke.sh --shard ${{ matrix.shard }}/3

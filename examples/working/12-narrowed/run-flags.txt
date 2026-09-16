@@ -1,0 +1,1 @@
+--file wanted.ts --function wanted

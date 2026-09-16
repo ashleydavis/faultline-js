@@ -1,0 +1,1 @@
+There is no option called --made-up-option. Run flt --help to see the ones there are.

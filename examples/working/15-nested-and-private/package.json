@@ -1,0 +1,5 @@
+{
+    "name": "15-nested-and-private",
+    "private": true,
+    "type": "module"
+}

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#
+# Refuses a commit that any suite does not pass.
+#
+# Run scripts/install-hooks.sh once in a fresh clone to put this in place.
+
+set -uo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if ! bash "$here/scripts/test-everything.sh"; then
+    printf '\nThe commit was refused because a suite did not pass. Fix what failed and commit again.\n'
+    exit 1
+fi

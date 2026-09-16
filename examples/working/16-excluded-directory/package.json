@@ -1,0 +1,5 @@
+{
+    "name": "16-excluded-directory",
+    "private": true,
+    "type": "module"
+}

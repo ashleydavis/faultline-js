@@ -1,0 +1,9 @@
+Fault testing the JavaScript and TypeScript in 26-invariant-fails.
+
+Deterministic simulation of 1 project. The report comes at the end.
+  Read 1 source file, with 2 functions to exercise.
+  Exercising 32 units, scenarios first.
+  Reading what those calls reached.
+
+Seed 1 stopped holding in counter.sim.ts:6 theCountIsNeverNegative with Error: TheCountWentNegative.
+Reproduce it with: flt --replay "seed=1"

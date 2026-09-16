@@ -1,0 +1,21 @@
+Fault testing the JavaScript and TypeScript in 08-effects.
+
+Deterministic simulation of 1 project. The report comes at the end.
+  Read 1 source file, with 4 functions to exercise.
+  Exercising 96 units, scenarios first.
+  Reading what those calls reached.
+
+Deterministic simulation
+
+  4 functions covered every path, and are not listed above.
+
+  Found 1 source file, tested 1, exercised 4 functions and executed 10 of 10 paths.
+  One seed ran against effects that answered, and 15 against a network that refuses connections, a file system that fails, a writer that takes only part of what it was given and a clock that jumps, one call in 4.
+  Stepped over <count> calls for throwing on an input the function was never written for. The paths they would have covered are not in the count above.
+  Swept 16 seeds, with no scenario reporting a wrong answer.
+  Full detail is in <work>/coverage-report.txt.
+
+  Coverage: 10 of 10 paths, 100%.
+
+  Passed: every code path ran.
+  Took <time>.

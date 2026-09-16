@@ -1,0 +1,50 @@
+{
+    "name": "faultline",
+    "version": "0.1.0",
+    "description": "Runs every code path in every JavaScript and TypeScript function in your project, and reports the ones no call reached.",
+    "type": "module",
+    "bin": {
+        "flt": "./bin/flt.mjs"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/runtime/index.d.ts",
+            "default": "./dist/runtime/index.js"
+        }
+    },
+    "engines": {
+        "node": ">=22.6.0"
+    },
+    "files": [
+        "bin",
+        "dist",
+        "docs",
+        "README.md"
+    ],
+    "scripts": {
+        "build": "tsc --project tsconfig.build.json",
+        "prepack": "npm run build",
+        "test": "node --test --test-timeout=600000 'src/**/*.test.ts'",
+        "typecheck": "tsc --noEmit",
+        "flt": "node ./bin/flt.mjs",
+        "pretest": "npm run build",
+        "prepare": "npm run build"
+    },
+    "dependencies": {
+        "@jridgewell/trace-mapping": "^0.3.31",
+        "typescript": "^5.9.3"
+    },
+    "license": "MIT",
+    "devDependencies": {
+        "@types/node": "^22.20.3",
+        "playwright": "^1.63.0"
+    },
+    "peerDependencies": {
+        "playwright": ">=1.40.0"
+    },
+    "peerDependenciesMeta": {
+        "playwright": {
+            "optional": true
+        }
+    }
+}

@@ -1,0 +1,3 @@
+Every code path the run found, ticked when a call reached it.
+
+Coverage: 2.220446049250313e-16 of 0.5 paths, 0%.

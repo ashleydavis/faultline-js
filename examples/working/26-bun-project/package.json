@@ -1,0 +1,6 @@
+{
+    "name": "26-bun-project",
+    "private": true,
+    "module": "src/index.ts",
+    "type": "module"
+}

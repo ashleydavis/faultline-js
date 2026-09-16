@@ -1,0 +1,20 @@
+Fault testing the JavaScript and TypeScript in 19-string-literals.
+
+Deterministic simulation of 1 project. The report comes at the end.
+  Read 1 source file, with 1 function to exercise.
+  Exercising 32 units, scenarios first.
+  Reading what those calls reached.
+
+Deterministic simulation
+
+  1 function covered every path, and is not listed above.
+
+  Found 1 source file, tested 1, exercised 1 function and executed 7 of 7 paths.
+  One seed ran against effects that answered, and 15 against a network that refuses connections, a file system that fails, a writer that takes only part of what it was given and a clock that jumps, one call in 4.
+  Swept 16 seeds, with no scenario reporting a wrong answer.
+  Full detail is in <work>/coverage-report.txt.
+
+  Coverage: 7 of 7 paths, 100%.
+
+  Passed: every code path ran.
+  Took <time>.

@@ -1,0 +1,5 @@
+Fault testing the JavaScript and TypeScript in 24-will-not-compile.
+
+The simulation would not compile. The compiler said:
+
+broken.ts:2:1: '}' expected.
