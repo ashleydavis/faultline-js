@@ -67,13 +67,47 @@ export function countAt(script: ScriptCoverage, offset: number): number {
     return found;
 }
 
+// Adds what one reading counted into a running total for the same process.
+//
+// Taking coverage from V8 resets its counters, so a reading is what ran since the last one rather
+// than everything that has run. A process that reads more than once has to add the readings up, or
+// each one throws away what came before it.
+//
+// The ranges of two readings of the same script do not line up, so they are added by where they
+// start and end rather than by their place in the list.
+export function addInto(total: Map<string, ScriptCoverage>, taken: ScriptCoverage[]): void {
+    for (const script of taken) {
+        const held = total.get(script.url);
+        if (held === undefined) {
+            total.set(script.url, { url: script.url, functions: script.functions.map((one) => ({ ...one, ranges: [...one.ranges] })) });
+            continue;
+        }
+        const byPlace = new Map<string, Range>();
+        for (const range of held.functions.flatMap((one) => one.ranges)) {
+            byPlace.set(`${range.startOffset}:${range.endOffset}`, { ...range });
+        }
+        for (const range of script.functions.flatMap((one) => one.ranges)) {
+            const key = `${range.startOffset}:${range.endOffset}`;
+            const already = byPlace.get(key);
+            if (already === undefined) {
+                byPlace.set(key, { ...range });
+                continue;
+            }
+            already.count += range.count;
+        }
+        // One function holding every range reads the same to `countAt`, which only ever looks for
+        // the narrowest range covering an offset.
+        total.set(script.url, { url: script.url, functions: [{ functionName: "", ranges: [...byPlace.values()] }] });
+    }
+}
+
 // Everything one run counted, kept apart by the process that counted it.
 //
-// V8 counts from the moment coverage starts and never resets, so the newest reading from one
-// process replaces what that process said before. A second process starts from zero, so its counts
-// are added to the first's rather than replacing them. A run starts a second process for every
-// round past the first and after any unit that stopped one, and mixing the two up loses everything
-// the earlier processes reached.
+// Each process sends a running total of what it has counted, so the newest word from one process
+// replaces what it said before. A second process starts from zero, so its counts are added to the
+// first's rather than replacing them. A run starts a second process for every round past the first
+// and after any unit that stopped one, and mixing the two up loses everything the earlier processes
+// reached.
 export type Taken = Map<number, Map<string, ScriptCoverage>>;
 
 // Puts what one process has counted so far into the whole.

@@ -17,9 +17,16 @@ import { tally } from "./report/tally.ts";
 
 // Where the runtime module is declared, which is how a parameter of an effect type is told from a
 // parameter whose type merely carries the same name.
-const runtimeFile = ["runtime/index.ts", "runtime/index.js", "runtime/index.d.ts"].map((one) =>
-    path.resolve(fileDirectory(), one),
-);
+const runtimeFile = [
+    // A clone runs the source and resolves `faultline` through the package's exports, which name
+    // what the build emitted, so both the source and the build are named here.
+    "runtime/index.ts",
+    "runtime/index.js",
+    "runtime/index.d.ts",
+    "../dist/runtime/index.js",
+    "../dist/runtime/index.d.ts",
+    "../src/runtime/index.ts",
+].map((one) => path.resolve(fileDirectory(), one));
 
 // What a run came to.
 export interface RunResult {

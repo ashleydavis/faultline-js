@@ -6,7 +6,7 @@
 import fs from "node:fs";
 import inspector from "node:inspector";
 import { pathToFileURL } from "node:url";
-import type { ScriptCoverage } from "../coverage/v8.ts";
+import { addInto, type ScriptCoverage } from "../coverage/v8.ts";
 import type { FileModel, RunModel } from "../model.ts";
 import type { FromDriver, ToDriver, Unit } from "./protocol.ts";
 import { buildUnits } from "./units.ts";
@@ -33,8 +33,17 @@ function startWatching(): void {
     watcher.post("Profiler.startPreciseCoverage", { callCount: true, detailed: true });
 }
 
-// Reads what V8 has counted so far, keeping only the copies this run loaded.
-function takeCoverage(work: string): Promise<ScriptCoverage[]> {
+// Everything this process has counted, added up across every reading.
+const counted = new Map<string, ScriptCoverage>();
+
+// Reads what V8 has counted since the last reading, adds it to the total, and hands back the total.
+async function takeCoverage(work: string): Promise<ScriptCoverage[]> {
+    addInto(counted, await readSinceLast(work));
+    return [...counted.values()];
+}
+
+// Reads what V8 has counted since the last reading, keeping only the copies this run loaded.
+function readSinceLast(work: string): Promise<ScriptCoverage[]> {
     return new Promise((settle) => {
         watcher.post("Profiler.takePreciseCoverage", (err, taken) => {
             if (err !== null || taken === undefined) {
