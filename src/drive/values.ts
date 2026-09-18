@@ -76,34 +76,44 @@ export const mostTurns = Math.max(interestingStrings.length, interestingNumbers.
 // built from a recipe that refers to itself through a factory.
 const deepestValue = 8;
 
-// The strings worth trying for one file: every string it names, and one built with something on
-// either side of it.
+// The strings worth trying for one file, in the order they are tried: the ones it names, then the
+// ones written here, then ones built around each of its own.
 //
 // A separator is named on its own and never appears in a made up value, so the code after a split
 // or a join is reached by neither. There is a cap, because a file naming a hundred strings would
 // cost a hundred turns before any of the ones written here were tried.
 export function builtAround(tests: (string | number | boolean)[]): string[] {
     const named = tests.filter((one): one is string => typeof one === "string");
-    const out: string[] = [];
+    // Every string the file names comes before anything built around one of them. A file naming
+    // five strings would otherwise have the fifth sitting twenty five turns in, and a unit that
+    // stops when it stops reaching paths never gets that far.
+    const around: string[] = [];
     for (const one of named) {
-        out.push(one);
         if (one !== "" && one.length <= longestBuiltAround) {
             // Four shapes, because what the code after a split or a join turns on differs: two
             // numbers in order, two out of order, two that are not numbers at all, and more than
             // two.
-            out.push(`1${one}2`, `2${one}1`, `a${one}b`, `a${one}b${one}c`);
+            around.push(`1${one}2`, `2${one}1`, `a${one}b`, `a${one}b${one}c`);
         }
     }
-    return out.slice(0, mostBuiltAround);
+    return [...named.slice(0, mostNamed), ...interestingStrings, ...around].slice(0, mostBuiltAround);
 }
 
 // How long a string a file names may be before nothing is built around it. A file naming a whole
 // paragraph is naming a message rather than a separator, and a separator is what this is for.
 const longestBuiltAround = 8;
 
-// How many strings one file hands the run. Every one of them costs a turn before the ones written
-// here are reached.
-const mostBuiltAround = 96;
+// How many turns the choices made in building one value stay the same distance apart. Four is
+// short, because a choice is cheap and a unit stops once it stops reaching paths.
+const blockOfTurns = 4;
+
+// How many of a file's own strings come before the ones written here. A file naming sixty of them
+// would otherwise put the empty string and the long one sixty turns out, and a unit that stops when
+// it stops reaching paths never gets that far.
+const mostNamed = 16;
+
+// How many strings in all one file hands the run.
+const mostBuiltAround = 128;
 
 // A stand-in for a value the run cannot build.
 //
@@ -207,6 +217,8 @@ export class ValueMaker {
     // How many times one of several ways to build a value has been chosen on this turn.
     private chosen = 0;
 
+
+
     // Every type this maker had to stand in for, in the order it met them. The run asks for a test
     // input factory for each, and calls the function with a stand-in in the meantime.
     readonly stoodIn: CannotBuild[] = [];
@@ -272,7 +284,7 @@ export class ValueMaker {
                     { kind: "array", element: { kind: "number" } },
                 ]), depth + 1);
             case "string":
-                return this.worthTrying([...this.stringsToTry, ...interestingStrings]);
+                return this.worthTrying(this.stringsToTry);
             case "number":
                 return this.worthTrying([...this.tests.filter((one) => typeof one === "number"), ...interestingNumbers]);
             case "bigint":
@@ -431,8 +443,20 @@ export class ValueMaker {
     }
 
     // Takes one of several ways to build a value, worked through by turn.
+    //
+    // Every choice moves on every turn, and how far apart they sit changes every few turns.
+    //
+    // Moving them all on together by one locks choices that have the same number of ways to go: a
+    // parameter that is either nothing or an object holding a field that is either nothing or a
+    // string picked the object only on the odd turns, and on every one of those the field inside it
+    // was nothing. Spreading them further apart every few turns unlocks it.
+    //
+    // Having each one wait for the one before it to go all the way round covers the combinations
+    // exactly and was tried. It cost four points: a parameter of a compiler's own node type is a
+    // union of hundreds, and a choice inside one of those waited hundreds of turns for its first
+    // move.
     private oneOf<T>(values: readonly T[]): T {
-        const at = (this.turn + this.chosen) % values.length;
+        const at = (this.turn + this.chosen * (1 + Math.floor(this.turn / blockOfTurns))) % values.length;
         this.chosen += 1;
         return values[at]!;
     }

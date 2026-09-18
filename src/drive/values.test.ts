@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { RunSubject } from "../effects/subject.ts";
 import type { Recipe } from "../discover/recipes.ts";
-import { CannotBuild, interestingNumbers, interestingStrings, mostTurns, standIn, ValueMaker } from "./values.ts";
+import { builtAround, CannotBuild, interestingNumbers, interestingStrings, mostTurns, standIn, ValueMaker } from "./values.ts";
 
 // A maker wired to one seed, with the factories a test hands it.
 function maker(seed = 1, factories: ConstructorParameters<typeof ValueMaker>[1] = []): ValueMaker {
@@ -382,4 +382,39 @@ test("a parameter of a type with no factory is stood in for rather than stopping
     const one = new ValueMaker(new RunSubject(1, "clean"), [], 0);
     assert.throws(() => one.make({ kind: "unknown", text: "symbol" }), CannotBuild);
     assert.equal(one.stoodIn.length, 0);
+});
+
+test("a choice inside another is not locked to it when both go two ways", () => {
+    // A parameter that is either nothing or an object holding a field that is either nothing or a
+    // string. Moving both choices on together picked the object only on the odd turns, and on every
+    // one of those the field inside it was nothing.
+    const recipe: Recipe = {
+        kind: "union",
+        options: [
+            { kind: "null" },
+            { kind: "object", properties: [{ name: "held", optional: false, recipe: { kind: "union", options: [{ kind: "undefined" }, { kind: "string" }] } }] },
+        ],
+    };
+    const subject = new RunSubject(1, "clean");
+    const seen: unknown[] = [];
+    for (let turn = 0; turn < mostTurns; turn += 1) {
+        seen.push(new ValueMaker(subject, [], turn).make(recipe));
+    }
+    assert.ok(
+        seen.some((one) => one !== null && typeof (one as { held?: unknown }).held === "string"),
+        `never built the object with its field: ${JSON.stringify(seen)}`,
+    );
+});
+
+test("the strings a file names come before the ones written here", () => {
+    const built = builtAround(["US", "AU"]);
+    assert.equal(built[0], "US");
+    assert.equal(built[1], "AU");
+    assert.equal(built[2], interestingStrings[0]);
+});
+
+test("strings built around the ones a file names come after both", () => {
+    const built = builtAround(["-"]);
+    assert.ok(built.includes("1-2"), JSON.stringify(built));
+    assert.ok(built.indexOf("1-2") > built.indexOf(interestingStrings[0]!));
 });
