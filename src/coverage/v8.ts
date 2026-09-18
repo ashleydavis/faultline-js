@@ -73,8 +73,11 @@ export function countAt(script: ScriptCoverage, offset: number): number {
 // than everything that has run. A process that reads more than once has to add the readings up, or
 // each one throws away what came before it.
 //
-// The ranges of two readings of the same script do not line up, so they are added by where they
-// start and end rather than by their place in the list.
+// The two readings do not report the same ranges. V8 leaves out a block whose count matches the
+// block around it, so a block that ran three times in one reading and three times in the next is a
+// range of its own once and no range at all the second time. Adding range to range by where it
+// starts and ends would read that as three. So every place either reading knows about is asked of
+// both, through the same narrowest range lookup the report uses, and the two answers are added.
 export function addInto(total: Map<string, ScriptCoverage>, taken: ScriptCoverage[]): void {
     for (const script of taken) {
         const held = total.get(script.url);
@@ -83,22 +86,21 @@ export function addInto(total: Map<string, ScriptCoverage>, taken: ScriptCoverag
             continue;
         }
         const byPlace = new Map<string, Range>();
-        for (const range of held.functions.flatMap((one) => one.ranges)) {
-            byPlace.set(`${range.startOffset}:${range.endOffset}`, { ...range });
+        for (const range of [...everyRange(held), ...everyRange(script)]) {
+            byPlace.set(`${range.startOffset}:${range.endOffset}`, { startOffset: range.startOffset, endOffset: range.endOffset, count: 0 });
         }
-        for (const range of script.functions.flatMap((one) => one.ranges)) {
-            const key = `${range.startOffset}:${range.endOffset}`;
-            const already = byPlace.get(key);
-            if (already === undefined) {
-                byPlace.set(key, { ...range });
-                continue;
-            }
-            already.count += range.count;
+        for (const range of byPlace.values()) {
+            range.count = countAt(held, range.startOffset) + countAt(script, range.startOffset);
         }
         // One function holding every range reads the same to `countAt`, which only ever looks for
         // the narrowest range covering an offset.
         total.set(script.url, { url: script.url, functions: [{ functionName: "", ranges: [...byPlace.values()] }] });
     }
+}
+
+// Every range of one script, whichever function V8 put it under.
+function everyRange(script: ScriptCoverage): Range[] {
+    return script.functions.flatMap((one) => one.ranges);
 }
 
 // Everything one run counted, kept apart by the process that counted it.

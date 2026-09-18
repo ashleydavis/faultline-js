@@ -53,8 +53,9 @@ export interface UnitDone {
     cannotBuild?: { parameter: string; typeText: string };
 }
 
-// What the driver says when it has read what V8 counted. V8 counts from the moment coverage starts
-// and never resets, so the newest reading for a script is the whole truth about it.
+// What the driver says when it has read what V8 counted. Reading resets V8's counters, so the
+// driver adds its readings up and sends the total, and the newest one from a process replaces what
+// that process said before.
 export interface CoverageTaken {
     // Says which kind of message this is.
     type: "coverage";
