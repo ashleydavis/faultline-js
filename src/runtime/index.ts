@@ -77,7 +77,7 @@ export interface Writer {
 }
 
 // The effects a run can make fail, named so a plan can write one down.
-export type EffectName = "net" | "files" | "writer" | "clock" | "rng" | "calls" | "values";
+export type EffectName = "net" | "files" | "writer" | "clock" | "rng" | "calls" | "values" | "process";
 
 // What a run hands a scenario: every effect, wired to this run's own seed, plus the trace that
 // reads back what the code under test logged.

@@ -59,3 +59,54 @@ test("a call made with no run in flight reads the machine's own clock", () => {
         removeGlobals();
     }
 });
+
+test("a call that waits costs the run no time and moves its clock forward", async () => {
+    const seen = await new Promise<{ before: number; after: number }>((settle) => {
+        installGlobals();
+        const subject = new RunSubject(7, "clean");
+        const held = runWith(subject);
+        const before = Date.now();
+        setTimeout(() => {
+            const after = Date.now();
+            runWith(held);
+            removeGlobals();
+            settle({ before, after });
+        }, 3600000);
+    });
+    assert.equal(seen.after - seen.before, 3600000);
+});
+
+test("a repeating timer runs one turn, so the run gets past it", async () => {
+    const turns = await new Promise<number>((settle) => {
+        installGlobals();
+        const held = runWith(new RunSubject(7, "clean"));
+        let count = 0;
+        setInterval(() => {
+            count += 1;
+        }, 10);
+        queueMicrotask(() => {
+            queueMicrotask(() => {
+                runWith(held);
+                removeGlobals();
+                settle(count);
+            });
+        });
+    });
+    assert.equal(turns, 1);
+});
+
+test("a store a page keeps things in is one a run owns", () => {
+    const global = globalThis as unknown as Record<string, unknown>;
+    Object.defineProperty(global, "localStorage", { value: { getItem: () => null }, configurable: true });
+    try {
+        const seen = whileRunning(() => {
+            const store = global.localStorage as Storage;
+            store.setItem("a", "b");
+            return store.getItem("a");
+        });
+        assert.equal(seen, "b");
+    }
+    finally {
+        delete global.localStorage;
+    }
+});

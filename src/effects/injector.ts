@@ -22,6 +22,9 @@ export const failuresByEffect: Record<EffectName, string[]> = {
     // A value the run passed in arriving as nothing at all, whatever the type said. This is where
     // a TypeError comes from in a running program, and no type ever says it can happen.
     values: ["null", "undefined"],
+    // Another program the code under test runs. It is not there, it refuses to start, it answers
+    // with a status nobody checked, or it writes to the error stream and carries on.
+    process: ["missing", "denied", "failed", "on-error-stream"],
 };
 
 // How often each effect fails when nothing asked it to, as one call in this many.

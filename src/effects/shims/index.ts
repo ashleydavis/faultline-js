@@ -16,6 +16,18 @@ const shimNames: Record<string, string> = {
     fs: "fs",
     "node:fs/promises": "fs-promises",
     "fs/promises": "fs-promises",
+    "node:dns": "dns",
+    dns: "dns",
+    "node:dns/promises": "dns-promises",
+    "dns/promises": "dns-promises",
+    "node:http": "http",
+    http: "http",
+    "node:https": "http",
+    https: "http",
+    "node:net": "net",
+    net: "net",
+    "node:child_process": "child-process",
+    child_process: "child-process",
 };
 
 // Where one replacement sits on this machine, or nothing when the name is not one that is replaced.
