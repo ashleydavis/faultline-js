@@ -54,6 +54,28 @@ export type Recipe =
 // for ever, and six levels is deeper than any value a call needs to be interesting.
 const deepestRecipe = 6;
 
+// What a type is called, for the line asking for a test input factory.
+//
+// A union of many parts is written out in full by the checker, and a union of a hundred unknowns
+// reads as "unknown | unknown | ..." for a hundred turns. The parts are counted once each and the
+// whole is cut short, because the line is read by somebody deciding what to write.
+export function nameOf(checker: ts.TypeChecker, type: ts.Type): string {
+    const written = checker.typeToString(type);
+    if (written.length <= longestTypeName) {
+        return written;
+    }
+    const parts = [...new Set(written.split(" | "))];
+    const joined = parts.join(" | ");
+    if (joined.length <= longestTypeName) {
+        return joined;
+    }
+    return `${joined.slice(0, longestTypeName)}...`;
+}
+
+// How long a type name may be before the line naming it is cut short. Eighty is a terminal's width,
+// and a name longer than a line is read by nobody.
+const longestTypeName = 80;
+
 // The types the run supplies, by the name each one is declared under in the runtime module.
 const effectByName: Record<string, EffectKind> = {
     Injector: "injector",
@@ -80,7 +102,7 @@ export function recipeFor(context: RecipeContext, type: ts.Type, at: ts.Node, de
     const checker = context.checker;
 
     if (depth > deepestRecipe) {
-        return { kind: "unknown", text: checker.typeToString(type) };
+        return { kind: "unknown", text: nameOf(checker, type) };
     }
 
     const flags = type.flags;
@@ -156,7 +178,7 @@ export function recipeFor(context: RecipeContext, type: ts.Type, at: ts.Node, de
     }
 
     if (checker.getSignaturesOfType(type, ts.SignatureKind.Construct).length > 0) {
-        return { kind: "unknown", text: checker.typeToString(type) };
+        return { kind: "unknown", text: nameOf(checker, type) };
     }
 
     if (isTupleLike(checker, type)) {
@@ -168,7 +190,7 @@ export function recipeFor(context: RecipeContext, type: ts.Type, at: ts.Node, de
         return named(context, type, objectRecipe(context, type, at, depth));
     }
 
-    return { kind: "unknown", text: checker.typeToString(type) };
+    return { kind: "unknown", text: nameOf(checker, type) };
 }
 
 // A stable name for a type, so a factory written for it is found again on the next run. It is the
@@ -299,7 +321,7 @@ function objectRecipe(context: RecipeContext, type: ts.Type, at: ts.Node, depth:
 function intersectionRecipe(context: RecipeContext, type: ts.IntersectionType, at: ts.Node, depth: number): Recipe {
     const merged = objectRecipe(context, type, at, depth);
     if (merged.kind === "object" && merged.properties.length === 0) {
-        return { kind: "unknown", text: context.checker.typeToString(type) };
+        return { kind: "unknown", text: nameOf(context.checker, type) };
     }
     return merged;
 }

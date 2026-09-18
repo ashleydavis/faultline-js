@@ -77,14 +77,17 @@ function needsSomething(
             line: `${held.held.label} at ${file.file}:${held.held.line} ran past the budget without returning, so the run stopped it and the paths it was part way through were not counted. Write a scenario calling it with an input it returns for.`,
         };
     }
-    if (held.calls > 0) {
-        return undefined;
-    }
     if (held.needs !== undefined) {
+        // A type the run cannot build is stood in for, so the function is still called and its
+        // paths still run. What ran them was not a value of that type, so the paths it reached
+        // prove nothing about the code taking the real one, and the factory is still what to write.
         return {
             kind: "factory",
-            line: `Write a test input factory returning ${held.needs.typeText}, which ${held.held.label} takes as \`${held.needs.parameter}\`. Without one, ${held.held.label} at ${file.file}:${held.held.line} cannot be called at all.`,
+            line: `Write a test input factory returning ${held.needs.typeText}, which ${held.held.label} takes as \`${held.needs.parameter}\`. Without one, ${held.held.label} at ${file.file}:${held.held.line} is called with a stand-in rather than a value of that type.`,
         };
+    }
+    if (held.calls > 0) {
+        return undefined;
     }
     const reach = held.held.reach;
     if (reach.how === "method" && reach.classExport === "") {

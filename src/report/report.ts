@@ -118,10 +118,19 @@ export function report(input: ReportInput): Verdict {
     say(`  Coverage: ${input.tally.ticked} of ${input.tally.total} ${plural(input.tally.total, "path", "paths")}, ${percentage}%.`);
     say();
 
-    if (percentage === 100) {
+    if (percentage === 100 && checklist.todo.length === 0) {
         say("  Passed: every code path ran.");
         say(`  Took ${elapsed(input.took)}.`);
         return { lines, status: 0 };
+    }
+
+    if (percentage === 100) {
+        // Every path ran, and something on the list says what ran one of them was a stand-in rather
+        // than a value of the type the code takes. The list is the work, so the run stays red.
+        say(`  Failed: every code path ran, and the ${plural(checklist.todo.length, "thing", "things")} above ${plural(checklist.todo.length, "has", "have")} still to be written.`);
+        say("  Until then a path above ran against a stand-in rather than a value of its own type.");
+        say(`  Took ${elapsed(input.took)}.`);
+        return { lines, status: 1 };
     }
 
     const left = input.tally.total - input.tally.ticked;

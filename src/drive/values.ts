@@ -76,6 +76,53 @@ export const mostTurns = Math.max(interestingStrings.length, interestingNumbers.
 // built from a recipe that refers to itself through a factory.
 const deepestValue = 8;
 
+// A stand-in for a value the run cannot build.
+//
+// It answers any property with another stand-in and it can be called, so a function that reaches
+// into its argument gets past the first line rather than throwing at it and being stepped over. It
+// is not the real thing and the paths it reaches are the shallow ones, so the run still asks for a
+// test input factory.
+//
+// A symbol the runtime reads to decide what a value is answers with nothing, because a stand-in for
+// one of those makes the runtime treat the whole as something it is not: a stand-in at `then` would
+// make awaiting it never finish, and one at `Symbol.iterator` would break every loop over it.
+export function standIn(): unknown {
+    const held = function standingIn(): unknown {
+        return standIn();
+    };
+    return new Proxy(held, {
+        get: (target, name) => {
+            // Turning a value into a string or a number goes through these, and a stand-in at one
+            // of them hands back another stand-in rather than a primitive, which the runtime
+            // refuses. Putting one in a template literal is ordinary code, so they answer plainly.
+            if (name === "toString" || name === "valueOf" || name === Symbol.toPrimitive) {
+                return () => standInName;
+            }
+            if (name === "toJSON") {
+                return () => standInName;
+            }
+            if (name === Symbol.toStringTag) {
+                return standInName;
+            }
+            // A symbol the runtime reads to decide what a value is answers with what the function
+            // underneath has, because a stand-in at one of them makes the runtime treat the whole
+            // as something it is not: one at `then` would make awaiting it never finish, and one at
+            // `Symbol.iterator` would break every loop over it.
+            if (typeof name === "symbol" || name === "then" || name === "constructor" || name === "prototype") {
+                return Reflect.get(target, name) as unknown;
+            }
+            return standIn();
+        },
+        has: () => true,
+        apply: () => standIn(),
+        construct: () => standIn() as object,
+    });
+}
+
+// What a stand-in says it is when something turns it into text. It is written so that a message
+// carrying one says where the value came from rather than reading as an empty object.
+const standInName = "(a stand-in for a type with no test input factory)";
+
 // Builds values from recipes, drawing everything it varies from one seed.
 export class ValueMaker {
     // This run's effects, which is where a parameter of an effect type is filled from.
@@ -97,6 +144,10 @@ export class ValueMaker {
     // says which entry comes next, so one call's several arguments are different values and the
     // next turn moves all of them on.
     private handedOut = 0;
+
+    // Every type this maker had to stand in for, in the order it met them. The run asks for a test
+    // input factory for each, and calls the function with a stand-in in the meantime.
+    readonly stoodIn: CannotBuild[] = [];
 
     constructor(subject: RunSubject, factories: CallableFactory[], turn = 0) {
         this.turn = turn;

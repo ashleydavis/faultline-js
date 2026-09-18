@@ -12,7 +12,7 @@ import { RunChecklist, RunSubject } from "../effects/subject.ts";
 import type { FileModel, RunModel } from "../model.ts";
 import { functionKey, type FromDriver, type Unit } from "./protocol.ts";
 import { callsPerUnit } from "./units.ts";
-import { CannotBuild, ValueMaker, type CallableFactory } from "./values.ts";
+import { CannotBuild, standIn, ValueMaker, type CallableFactory } from "./values.ts";
 
 // What a runtime has to supply for the driving to happen in it.
 export interface Runtime {
@@ -84,16 +84,35 @@ function argumentsFor(maker: ValueMaker, parameters: ParameterInfo[]): unknown[]
         if (parameter.rest) {
             const count = maker.subject.rng.pick([0, 1, 2]);
             for (let index = 0; index < count; index += 1) {
-                out.push(maker.spoiled(maker.make(parameter.recipe)));
+                out.push(maker.spoiled(built(maker, parameter)));
             }
             continue;
         }
         if (parameter.optional && maker.subject.rng.int(0, 1) === 0) {
             return out;
         }
-        out.push(maker.spoiled(maker.make(parameter.recipe)));
+        out.push(maker.spoiled(built(maker, parameter)));
     }
     return out;
+}
+
+// One argument, or a stand-in for one the run cannot build.
+//
+// A type the run cannot build used to stop the unit, so a function taking one was never called and
+// every path in it went unreached. It is called with a stand-in instead, which reaches the paths
+// that do not turn on what is inside the argument. The run still asks for a test input factory,
+// because the ones that do turn on it are still out of reach.
+function built(maker: ValueMaker, parameter: ParameterInfo): unknown {
+    try {
+        return maker.make(parameter.recipe);
+    }
+    catch (thrown) {
+        if (!(thrown instanceof CannotBuild)) {
+            throw thrown;
+        }
+        maker.stoodIn.push(thrown);
+        return standIn();
+    }
 }
 
 // Calls one function once, and says whether the call went through.
@@ -382,7 +401,12 @@ export async function runUnit(runtime: Runtime, model: RunModel, unit: Unit, fac
             break;
         }
         try {
-            const answer = await callOnce(new ValueMaker(subject, factories, round), module, held, file.classes);
+            const maker = new ValueMaker(subject, factories, round);
+            const answer = await callOnce(maker, module, held, file.classes);
+            const missing = maker.stoodIn[0];
+            if (cannotBuild === undefined && missing !== undefined) {
+                cannotBuild = { parameter: parameterNeeding(held, missing), typeText: missing.typeText };
+            }
             if (answer === "called") {
                 calls += 1;
             }
@@ -390,11 +414,7 @@ export async function runUnit(runtime: Runtime, model: RunModel, unit: Unit, fac
                 stepped += 1;
             }
         }
-        catch (thrown) {
-            if (thrown instanceof CannotBuild) {
-                cannotBuild = { parameter: parameterNeeding(held, thrown), typeText: thrown.typeText };
-                break;
-            }
+        catch {
             stepped += 1;
         }
     }

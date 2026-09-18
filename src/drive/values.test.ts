@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { RunSubject } from "../effects/subject.ts";
 import type { Recipe } from "../discover/recipes.ts";
-import { CannotBuild, interestingNumbers, interestingStrings, mostTurns, ValueMaker } from "./values.ts";
+import { CannotBuild, interestingNumbers, interestingStrings, mostTurns, standIn, ValueMaker } from "./values.ts";
 
 // A maker wired to one seed, with the factories a test hands it.
 function maker(seed = 1, factories: ConstructorParameters<typeof ValueMaker>[1] = []): ValueMaker {
@@ -329,4 +329,34 @@ test("every number worth trying is tried across the turns", () => {
         seen.push(new ValueMaker(new RunSubject(1, "clean"), [], turn).make({ kind: "number" }));
     }
     assert.deepEqual(seen, interestingNumbers);
+});
+
+test("a stand-in answers any property with another stand-in", () => {
+    const held = standIn() as Record<string, unknown>;
+    assert.notEqual(held.anything, undefined);
+    assert.notEqual((held.a as Record<string, unknown>).b, undefined);
+});
+
+test("a stand-in can be called and built", () => {
+    const held = standIn() as (() => unknown) & (new () => unknown);
+    assert.notEqual(held(), undefined);
+    assert.notEqual(new held(), undefined);
+});
+
+test("a stand-in turns into text rather than refusing to", () => {
+    const held = standIn();
+    assert.equal(typeof `${held as string}`, "string");
+    assert.equal(typeof String(held), "string");
+    assert.equal(typeof JSON.stringify({ held }), "string");
+});
+
+test("awaiting a stand-in finishes", async () => {
+    const held = await (standIn() as Promise<unknown>);
+    assert.notEqual(held, undefined);
+});
+
+test("a parameter of a type with no factory is stood in for rather than stopping the call", () => {
+    const one = new ValueMaker(new RunSubject(1, "clean"), [], 0);
+    assert.throws(() => one.make({ kind: "unknown", text: "symbol" }), CannotBuild);
+    assert.equal(one.stoodIn.length, 0);
 });

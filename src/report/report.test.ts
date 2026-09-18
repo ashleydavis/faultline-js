@@ -194,3 +194,12 @@ test("a run with no path at all reads as a hundred and passes", () => {
     assert.equal(verdict.status, 0);
     assert.match(verdict.lines.join("\n"), /Coverage: 0 of 0 paths, 100%\./);
 });
+
+test("a run where every path ran against a stand-in stays red", () => {
+    const one = counted(1, 1);
+    one.files[0]!.functions[0]!.needs = { parameter: "tag", typeText: "symbol" };
+    const verdict = report(input(one));
+    assert.equal(verdict.status, 1);
+    assert.match(verdict.lines.join("\n"), /Coverage: 1 of 1 path, 100%\./);
+    assert.match(verdict.lines.join("\n"), /Failed: every code path ran, and the thing above has still to be written\./);
+});
