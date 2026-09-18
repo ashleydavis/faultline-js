@@ -7,6 +7,8 @@ import fs from "node:fs";
 import inspector from "node:inspector";
 import { pathToFileURL } from "node:url";
 import { addInto, type ScriptCoverage } from "../coverage/v8.ts";
+import { startDriving } from "../effects/current.ts";
+import { installGlobals } from "../effects/globals.ts";
 import type { FileModel, RunModel } from "../model.ts";
 import { Copies, countsIn, didRun } from "../report/tally.ts";
 import type { FromDriver, ToDriver, Unit } from "./protocol.ts";
@@ -107,6 +109,10 @@ async function main(): Promise<void> {
     const told = JSON.parse(process.argv[2] ?? "{}") as ToDriver;
     const model = JSON.parse(fs.readFileSync(told.model, "utf8")) as RunModel;
     startWatching();
+    // The clock, the network and the rest are replaced before any of the project is loaded, so a
+    // module that reads one at its top level reads this run's.
+    installGlobals();
+    startDriving();
     const runtime = runtimeFor(model, new Set(told.ticked ?? []));
 
     let factories: CallableFactory[];

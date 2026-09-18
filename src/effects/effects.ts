@@ -128,11 +128,18 @@ export class RunNet implements Net {
     }
 }
 
-// A file system a run owns, held in memory. It never touches the disk, so no run can write
-// from writing into the repository it is measuring.
+// A file system a run owns, held in memory. It never touches the disk, so no run can write into the
+// repository it is measuring.
+//
+// The replaced `node:fs` sits on this, and so does every other way the code under test reaches a
+// file, so one run has one tree however the code under test got at it.
 export class RunFiles implements Files {
     // Every file this run has, by path.
     private readonly contents = new Map<string, string>();
+
+    // Every directory this run has been told to make, by path. A file's own directories count as
+    // made, so a read after a write works without the directory being made first.
+    private readonly directories = new Set<string>(["/"]);
 
     // What decides which of these file operations go wrong.
     private readonly injector: RunInjector;
@@ -146,12 +153,7 @@ export class RunFiles implements Files {
     }
 
     async read(path: string): Promise<string> {
-        this.refuse(path, "read");
-        const found = this.contents.get(path);
-        if (found === undefined) {
-            throw new CodedError("ENOENT", `ENOENT: no such file or directory, open '${path}'`);
-        }
-        return found;
+        return this.readNow(path);
     }
 
     async readBytes(path: string): Promise<Uint8Array> {
@@ -159,32 +161,115 @@ export class RunFiles implements Files {
     }
 
     async write(path: string, contents: string): Promise<void> {
-        this.refuse(path, "write");
-        this.contents.set(path, contents);
+        this.writeNow(path, contents);
     }
 
     async exists(path: string): Promise<boolean> {
-        this.refuse(path, "stat");
-        return this.contents.has(path);
+        return this.existsNow(path);
     }
 
     async list(path: string): Promise<string[]> {
+        return this.listNow(path);
+    }
+
+    async remove(path: string): Promise<void> {
+        this.removeNow(path);
+    }
+
+    // Reads one file, and throws the way the runtime throws when it cannot.
+    readNow(path: string): string {
+        this.refuse(path, "open");
+        const found = this.contents.get(clean(path));
+        if (found === undefined) {
+            throw new CodedError("ENOENT", `ENOENT: no such file or directory, open '${path}'`);
+        }
+        return found;
+    }
+
+    // Writes one file, replacing what was there, and makes the directories above it.
+    writeNow(path: string, contents: string): void {
+        this.refuse(path, "open");
+        const at = clean(path);
+        this.contents.set(at, contents);
+        for (const above of directoriesAbove(at)) {
+            this.directories.add(above);
+        }
+    }
+
+    // Adds to the end of one file, making it when it is not there.
+    appendNow(path: string, contents: string): void {
+        this.refuse(path, "open");
+        const at = clean(path);
+        this.contents.set(at, (this.contents.get(at) ?? "") + contents);
+        for (const above of directoriesAbove(at)) {
+            this.directories.add(above);
+        }
+    }
+
+    // Whether a file or a directory is there. It asks the injector, but a failure answers no rather
+    // than throwing, because that is what the runtime does.
+    existsNow(path: string): boolean {
+        try {
+            this.refuse(path, "stat");
+        }
+        catch {
+            return false;
+        }
+        const at = clean(path);
+        return this.contents.has(at) || this.directories.has(at);
+    }
+
+    // What one directory holds, as names rather than paths.
+    listNow(path: string): string[] {
         this.refuse(path, "scandir");
-        const prefix = path.endsWith("/") ? path : `${path}/`;
+        const at = clean(path);
+        const prefix = at === "/" ? "/" : `${at}/`;
         const names = new Set<string>();
-        for (const held of this.contents.keys()) {
-            if (held.startsWith(prefix)) {
+        for (const held of [...this.contents.keys(), ...this.directories]) {
+            if (held !== at && held.startsWith(prefix)) {
                 names.add(held.slice(prefix.length).split("/")[0]!);
             }
         }
         return [...names].sort();
     }
 
-    async remove(path: string): Promise<void> {
+    // Takes one file away.
+    removeNow(path: string): void {
         this.refuse(path, "unlink");
-        if (!this.contents.delete(path)) {
+        if (!this.contents.delete(clean(path))) {
             throw new CodedError("ENOENT", `ENOENT: no such file or directory, unlink '${path}'`);
         }
+    }
+
+    // Makes one directory, and the ones above it.
+    makeDirectoryNow(path: string): void {
+        this.refuse(path, "mkdir");
+        const at = clean(path);
+        this.directories.add(at);
+        for (const above of directoriesAbove(`${at}/x`)) {
+            this.directories.add(above);
+        }
+    }
+
+    // What one path is, for the code that reads a size or asks whether it is a directory.
+    statNow(path: string): { isFile: boolean; isDirectory: boolean; size: number } {
+        this.refuse(path, "stat");
+        const at = clean(path);
+        const held = this.contents.get(at);
+        if (held !== undefined) {
+            return { isFile: true, isDirectory: false, size: held.length };
+        }
+        if (this.directories.has(at)) {
+            return { isFile: false, isDirectory: true, size: 0 };
+        }
+        throw new CodedError("ENOENT", `ENOENT: no such file or directory, stat '${path}'`);
+    }
+
+    // Moves one file, keeping what is in it.
+    renameNow(from: string, to: string): void {
+        const held = this.readNow(from);
+        this.writeNow(to, held);
+        this.contents.delete(clean(from));
     }
 
     // Throws the error the injector asked for, and returns when it asked for none.
@@ -206,6 +291,27 @@ export class RunFiles implements Files {
             throw new CodedError("ENOSPC", `ENOSPC: no space left on device, ${operation} '${path}'`);
         }
     }
+}
+
+// One path written the one way, so a read after a write finds what the write put there whichever
+// spelling each of them used.
+function clean(path: string | URL): string {
+    const text = typeof path === "string" ? path : path.pathname;
+    const withoutDot = text.replace(/\/\.\//g, "/");
+    const trimmed = withoutDot.length > 1 && withoutDot.endsWith("/") ? withoutDot.slice(0, -1) : withoutDot;
+    return trimmed === "" ? "/" : trimmed;
+}
+
+// Every directory above one path, so a write makes the tree the file sits in.
+function directoriesAbove(path: string): string[] {
+    const out: string[] = ["/"];
+    const pieces = path.split("/").slice(1, -1);
+    let held = "";
+    for (const piece of pieces) {
+        held += `/${piece}`;
+        out.push(held);
+    }
+    return out;
 }
 
 // A writer a run owns. It keeps what it took, and takes only part of what it was given whenever

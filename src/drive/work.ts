@@ -6,6 +6,7 @@
 
 import type { ClassInfo, FunctionInfo, ParameterInfo } from "../discover/functions.ts";
 import type { PathSite } from "../discover/paths.ts";
+import { runWith } from "../effects/current.ts";
 import { effectIn, failuresByEffect, pointName, type Point } from "../effects/injector.ts";
 import { RunChecklist, RunSubject } from "../effects/subject.ts";
 import type { FileModel, RunModel } from "../model.ts";
@@ -96,7 +97,26 @@ function argumentsFor(maker: ValueMaker, parameters: ParameterInfo[]): unknown[]
 }
 
 // Calls one function once, and says whether the call went through.
+//
+// The run is put in flight for the whole of the call, so a file read or a fetch the code under test
+// makes reaches this run's own tree and this run's own network however it got there.
 async function callOnce(
+    maker: ValueMaker,
+    module: Record<string, unknown>,
+    held: FunctionInfo,
+    classes: ClassInfo[],
+): Promise<"called" | "stepped"> {
+    const before = runWith(maker.subject);
+    try {
+        return await callWhileRunning(maker, module, held, classes);
+    }
+    finally {
+        runWith(before);
+    }
+}
+
+// The call itself, with the run already in flight.
+async function callWhileRunning(
     maker: ValueMaker,
     module: Record<string, unknown>,
     held: FunctionInfo,

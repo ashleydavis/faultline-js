@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
+import { shimFor } from "../effects/shims/index.ts";
 import { pathsIn, type PathSite, type Unseen } from "../discover/paths.ts";
 
 // What the emit produced.
@@ -274,6 +275,13 @@ function pointAt(
 ): string | undefined {
     if (namesAnAsset(specifier)) {
         return relativeSpecifier(emittedAt, path.join(work, assetStubName));
+    }
+    const shim = shimFor(specifier);
+    if (shim !== undefined) {
+        // A built in module the run replaces. The code under test imports it the way it always did
+        // and gets the run's own, so a failed read is exercised without the project declaring
+        // anything.
+        return pathToFileURL(shim).href;
     }
     const resolved = ts.resolveModuleName(specifier, originalFile, options.options, ts.sys).resolvedModule;
     const target = resolved?.resolvedFileName;
