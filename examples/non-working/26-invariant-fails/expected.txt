@@ -5,5 +5,5 @@ Deterministic simulation of 1 project. The report comes at the end.
   Exercising 32 units, scenarios first.
   Reading what those calls reached.
 
-Seed 1 stopped holding in counter.sim.ts:6 theCountIsNeverNegative with Error: TheCountWentNegative.
+Seed 1 stopped holding in counter.sim.ts:5 theCountIsNeverNegative with Error: TheCountWentNegative.
 Reproduce it with: flt --replay "seed=1"

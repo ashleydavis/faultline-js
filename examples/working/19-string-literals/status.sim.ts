@@ -1,10 +1,9 @@
 // One scenario reaching every word at once, which is what a run cannot make up.
 
-import type { Checklist, Injector, Subject } from "faultline";
+import type { Checklist, Injector } from "faultline";
 import { meaningOf } from "./status.ts";
 
-export function everyWordItKnows(self: Subject, injector: Injector, checklist: Checklist): void {
-    void self;
+export function everyWordItKnows(injector: Injector, checklist: Checklist): void {
     void injector;
     void checklist;
 

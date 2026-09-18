@@ -198,8 +198,9 @@ async function invariantsHold(runtime: Runtime, model: RunModel, unit: Unit, sub
     for (const invariant of model.invariants) {
         const module = await runtime.load(invariant.module);
         const check = module[invariant.exportName] as (...args: unknown[]) => unknown;
+        const before = runWith(subject);
         try {
-            const answer = check(subject);
+            const answer = check();
             if (answer instanceof Promise) {
                 await answer;
             }
@@ -213,6 +214,9 @@ async function invariantsHold(runtime: Runtime, model: RunModel, unit: Unit, sub
                 kind: "invariant",
             });
             return false;
+        }
+        finally {
+            runWith(before);
         }
     }
     return true;
@@ -330,8 +334,9 @@ export async function runUnit(runtime: Runtime, model: RunModel, unit: Unit, fac
         const scenario = model.scenarios[unit.scenario!]!;
         const module = await runtime.load(scenario.module);
         const run = module[scenario.exportName] as (...args: unknown[]) => unknown;
+        const before = runWith(subject);
         try {
-            const answer = run(subject, subject.injector, new RunChecklist(runtime.ticked));
+            const answer = run(subject.injector, new RunChecklist(runtime.ticked));
             if (answer instanceof Promise) {
                 await answer;
             }
@@ -347,6 +352,9 @@ export async function runUnit(runtime: Runtime, model: RunModel, unit: Unit, fac
             runtime.say({ type: "unit", index: unit.index, calls: 1, stepped: 0 });
             await runtime.sendCoverage(true);
             return false;
+        }
+        finally {
+            runWith(before);
         }
         const held = await invariantsHold(runtime, model, unit, subject);
         runtime.say({ type: "unit", index: unit.index, calls: 1, stepped: 0 });

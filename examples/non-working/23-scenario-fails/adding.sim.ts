@@ -1,10 +1,9 @@
 // A scenario that says the answer is wrong, which stops the run.
 
-import type { Checklist, Injector, Subject } from "faultline";
+import type { Checklist, Injector } from "faultline";
 import { addOne } from "./adding.ts";
 
-export function addsWrong(self: Subject, injector: Injector, checklist: Checklist): void {
-    void self;
+export function addsWrong(injector: Injector, checklist: Checklist): void {
     void injector;
     void checklist;
 

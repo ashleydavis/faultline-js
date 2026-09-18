@@ -1,11 +1,8 @@
 // The invariant the code above breaks.
 
-import type { Subject } from "faultline";
 import { left } from "./counter.ts";
 
-export function theCountIsNeverNegative(self: Subject): void {
-    void self;
-
+export function theCountIsNeverNegative(): void {
     if (left() < 0) {
         throw new Error("TheCountWentNegative");
     }

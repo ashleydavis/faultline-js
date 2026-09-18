@@ -218,14 +218,8 @@ test("a faulting run spoils some values and leaves most alone", () => {
     assert.ok(spoiled < 400, "spoiling one value in two costs more calls than it buys paths");
 });
 
-test("each effect is the run's own", () => {
+test("the injector a scenario takes is the run's own", () => {
     const one = maker();
-    assert.equal(one.make({ kind: "effect", effect: "clock" }), one.subject.clock);
-    assert.equal(one.make({ kind: "effect", effect: "rng" }), one.subject.rng);
-    assert.equal(one.make({ kind: "effect", effect: "net" }), one.subject.net);
-    assert.equal(one.make({ kind: "effect", effect: "files" }), one.subject.files);
-    assert.equal(one.make({ kind: "effect", effect: "writer" }), one.subject.writer);
-    assert.equal(one.make({ kind: "effect", effect: "subject" }), one.subject);
     assert.equal(one.make({ kind: "effect", effect: "injector" }), one.subject.injector);
 });
 

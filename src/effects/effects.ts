@@ -4,7 +4,6 @@
 // it fails the way the real thing fails: the error a refused connection throws, the code a missing
 // file throws, a write that takes only part of what it was given.
 
-import type { Clock, Files, Net, Writer } from "../runtime/index.ts";
 import type { RunInjector } from "./injector.ts";
 import type { SeededRng } from "./random.ts";
 
@@ -23,7 +22,7 @@ export class CodedError extends Error {
 
 // A clock a run owns. Time moves only when this clock is asked to move it, so a call that sleeps
 // for an hour costs the run no time at all.
-export class RunClock implements Clock {
+export class RunClock {
     // Milliseconds since the epoch, as this clock currently reads.
     private wall: number;
 
@@ -79,7 +78,7 @@ const bodies = ['{"ok":true}', "[]", '{"items":[{"id":1}]}', "", "not json at al
 
 // A network a run owns. It answers from a fixed set of bodies until the injector says this call
 // fails, and then it fails the way a real network fails.
-export class RunNet implements Net {
+export class RunNet {
     // How many calls have been answered. This picks the next body.
     private answered = 0;
 
@@ -133,7 +132,7 @@ export class RunNet implements Net {
 //
 // The replaced `node:fs` sits on this, and so does every other way the code under test reaches a
 // file, so one run has one tree however the code under test got at it.
-export class RunFiles implements Files {
+export class RunFiles {
     // Every file this run has, by path.
     private readonly contents = new Map<string, string>();
 
@@ -316,7 +315,7 @@ function directoriesAbove(path: string): string[] {
 
 // A writer a run owns. It keeps what it took, and takes only part of what it was given whenever
 // the injector says so, which is the case a caller that ignores the return value gets wrong.
-export class RunWriter implements Writer {
+export class RunWriter {
     // Everything this writer took, in order.
     private taken = "";
 

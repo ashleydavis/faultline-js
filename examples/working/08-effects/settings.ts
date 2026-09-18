@@ -1,14 +1,15 @@
-// Every effect a run supplies, taken as a parameter.
+// Code that reads a file, fetches over the network, waits and writes, with none of it written for
+// the tool.
 //
-// A function that takes one of these is handed the run's own, which answers and fails in turn, so
-// the paths that only run when something goes wrong are reached without a scenario.
+// Every one of these is replaced underneath the run, so the paths that only run when something goes
+// wrong are reached without a scenario.
 
-import type { Clock, Files, Net, Writer } from "faultline";
+import fs from "node:fs/promises";
 
 // Reads how many retries the settings ask for, or falls back when they say nothing.
-export async function retriesFrom(files: Files, path: string): Promise<number> {
+export async function retriesFrom(path: string): Promise<number> {
     try {
-        const held = JSON.parse(await files.read(path)) as { retries?: number };
+        const held = JSON.parse(await fs.readFile(path, "utf8")) as { retries?: number };
         return held.retries ?? 1;
     }
     catch {
@@ -17,9 +18,9 @@ export async function retriesFrom(files: Files, path: string): Promise<number> {
 }
 
 // Asks a service whether it is up.
-export async function isUp(net: Net): Promise<boolean> {
+export async function isUp(): Promise<boolean> {
     try {
-        return (await net.fetch("https://example.com/health")).ok;
+        return (await fetch("https://example.com/health")).ok;
     }
     catch {
         return false;
@@ -27,17 +28,14 @@ export async function isUp(net: Net): Promise<boolean> {
 }
 
 // Waits, then says how long it waited for. A run returns at once and moves its own clock instead.
-export async function waited(clock: Clock, milliseconds: number): Promise<number> {
-    const before = clock.monotonic();
-    await clock.sleep(milliseconds);
-    return clock.monotonic() - before;
+export async function waited(milliseconds: number): Promise<number> {
+    const before = Date.now();
+    await new Promise<void>((settle) => setTimeout(settle, milliseconds));
+    return Date.now() - before;
 }
 
-// Writes a line, and says whether all of it went out.
-export async function writeLine(writer: Writer, text: string): Promise<boolean> {
-    const took = await writer.write(`${text}\n`);
-    if (took < text.length + 1) {
-        return false;
-    }
-    return true;
+// Writes a line to a log, and says whether it is all there.
+export async function writeLine(text: string): Promise<boolean> {
+    await fs.appendFile("/log.txt", `${text}\n`);
+    return (await fs.readFile("/log.txt", "utf8")).endsWith(`${text}\n`);
 }

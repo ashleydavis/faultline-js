@@ -88,7 +88,7 @@ Two it leaves out and says so: a `try` whose body throws every time, because eve
 
 ## 6. Write a test input factory for a type Faultline cannot build
 
-Faultline builds every ordinary value from its type, and everything standard as well: strings, numbers, unions, arrays, objects, maps, dates, promises, classes and generics. It builds the effects too: the clock, the network, the file system, a writer and a source of randomness. Take those as parameters and write no factory.
+Faultline builds every ordinary value from its type, and everything standard as well: strings, numbers, unions, arrays, objects, maps, dates, promises, classes and generics. What your code reaches the machine through is replaced rather than built, so `fs.readFileSync`, `fetch`, `Date.now`, `Math.random` and the rest are the run's own wherever your code calls them.
 
 It cannot build a type whose value decides which branch runs. A test input factory is an exported function returning your type, and the return type is how Faultline finds it:
 
@@ -132,10 +132,10 @@ export class MyLoaders {
 Faultline makes up argument values from their types, so it will not reach a branch that runs only for one particular value, or one that needs several arguments to line up at once.
 
 ```ts
-import type { Checklist, Injector, Subject } from "faultline";
+import type { Checklist, Injector } from "faultline";
 import { formatOf } from "./image.ts";
 
-export function runPngHeaderScenario(self: Subject, injector: Injector, checklist: Checklist): void {
+export function runPngHeaderScenario(injector: Injector, checklist: Checklist): void {
     void checklist;
     void injector;
 
@@ -145,7 +145,7 @@ export function runPngHeaderScenario(self: Subject, injector: Injector, checklis
 }
 ```
 
-Copy those three parameters exactly and export the function: Faultline finds a scenario by its parameter types, never by its name.
+Copy those two parameters exactly and export the function: Faultline finds a scenario by its parameter types, never by its name.
 
 Throw any error when the answer is wrong, and Faultline stops and prints the command that reproduces it.
 
@@ -153,15 +153,12 @@ A scenario runs against effects that answer. To reach the code that handles one 
 
 ## 8. Write invariants for what has to keep holding
 
-An invariant is checked after every call the run makes and after every scenario. Faultline finds one by its one parameter, where a scenario has three.
+An invariant is checked after every call the run makes and after every scenario. Faultline finds one by its taking nothing and giving nothing back, where a scenario takes the injector.
 
 ```ts
-import type { Subject } from "faultline";
 import { theLedger } from "./ledger.ts";
 
-export function theBalanceIsNeverNegative(self: Subject): void {
-    void self;
-
+export function theBalanceIsNeverNegative(): void {
     if (theLedger.balance < 0) {
         throw new Error("TheBalanceWentNegative");
     }

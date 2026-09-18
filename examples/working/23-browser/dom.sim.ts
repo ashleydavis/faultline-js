@@ -1,10 +1,9 @@
 // The two paths no made up call reaches: a page with no title, and an element that is there.
 
-import type { Checklist, Injector, Subject } from "faultline";
+import type { Checklist, Injector } from "faultline";
 import { isShowing, titleLength } from "./dom.ts";
 
-export function aPageWithNoTitle(self: Subject, injector: Injector, checklist: Checklist): void {
-    void self;
+export function aPageWithNoTitle(injector: Injector, checklist: Checklist): void {
     void injector;
     void checklist;
 
@@ -20,8 +19,7 @@ export function aPageWithNoTitle(self: Subject, injector: Injector, checklist: C
     }
 }
 
-export function anElementThatIsThere(self: Subject, injector: Injector, checklist: Checklist): void {
-    void self;
+export function anElementThatIsThere(injector: Injector, checklist: Checklist): void {
     void injector;
     void checklist;
 

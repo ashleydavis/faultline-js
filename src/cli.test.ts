@@ -98,7 +98,7 @@ test("a scenario reaches the path no call made up gets to", async () => {
     const run = await over({
         "a.ts": "export function magic(word: string) {\n    if (word === 'the-one-word') {\n        return true;\n    }\n    return false;\n}\n",
         "a.sim.ts":
-            'import type { Checklist, Injector, Subject } from "faultline";\nimport { magic } from "./a.ts";\nexport function reachIt(s: Subject, i: Injector, c: Checklist) {\n    void s; void i; void c;\n    if (!magic("the-one-word")) {\n        throw new Error("WrongAnswer");\n    }\n}\n',
+            'import type { Checklist, Injector } from "faultline";\nimport { magic } from "./a.ts";\nexport function reachIt(i: Injector, c: Checklist) {\n    void i; void c;\n    if (!magic("the-one-word")) {\n        throw new Error("WrongAnswer");\n    }\n}\n',
     });
     assert.equal(run.status, 0);
     assert.match(run.text, /Coverage: 3 of 3 paths, 100%\./);
@@ -108,7 +108,7 @@ test("a scenario that says the answer is wrong stops the run and prints how to r
     const run = await over({
         "a.ts": "export function two() {\n    return 2;\n}\n",
         "a.sim.ts":
-            'import type { Checklist, Injector, Subject } from "faultline";\nimport { two } from "./a.ts";\nexport function wrong(s: Subject, i: Injector, c: Checklist) {\n    void s; void i; void c;\n    if (two() !== 3) {\n        throw new Error("CountedWrong");\n    }\n}\n',
+            'import type { Checklist, Injector } from "faultline";\nimport { two } from "./a.ts";\nexport function wrong(i: Injector, c: Checklist) {\n    void i; void c;\n    if (two() !== 3) {\n        throw new Error("CountedWrong");\n    }\n}\n',
     });
     assert.equal(run.status, 1);
     assert.match(run.text, /failed in a\.sim\.ts:3 wrong with Error: CountedWrong\./);
@@ -157,7 +157,7 @@ test("a replay of a run that failed fails the same way", async () => {
     const root = project({
         "a.ts": "export function two() {\n    return 2;\n}\n",
         "a.sim.ts":
-            'import type { Checklist, Injector, Subject } from "faultline";\nimport { two } from "./a.ts";\nexport function wrong(s: Subject, i: Injector, c: Checklist) {\n    void s; void i; void c;\n    if (two() !== 3) {\n        throw new Error("CountedWrong");\n    }\n}\n',
+            'import type { Checklist, Injector } from "faultline";\nimport { two } from "./a.ts";\nexport function wrong(i: Injector, c: Checklist) {\n    void i; void c;\n    if (two() !== 3) {\n        throw new Error("CountedWrong");\n    }\n}\n',
     });
     try {
         const run = await flt([root, "--replay", "seed=1"]);
@@ -215,7 +215,7 @@ test("narrowing to one file leaves another file's scenarios out of the run", asy
             "a.ts": "export function f() {\n    return 1;\n}\n",
             "b.ts": "export function g() {\n    return 2;\n}\n",
             "b.sim.ts":
-                'import type { Checklist, Injector, Subject } from "faultline";\nexport function alwaysWrong(s: Subject, i: Injector, c: Checklist) {\n    void s; void i; void c;\n    throw new Error("WouldStopTheRun");\n}\n',
+                'import type { Checklist, Injector } from "faultline";\nexport function alwaysWrong(i: Injector, c: Checklist) {\n    void i; void c;\n    throw new Error("WouldStopTheRun");\n}\n',
         },
         ["--file", "a.ts"],
     );

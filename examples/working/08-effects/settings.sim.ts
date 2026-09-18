@@ -4,26 +4,27 @@
 // A made up path is never the one the run's own file system already holds, so neither side of the
 // fallback is reached without these.
 
-import type { Checklist, Injector, Subject } from "faultline";
+import fs from "node:fs/promises";
+import type { Checklist, Injector } from "faultline";
 import { retriesFrom } from "./settings.ts";
 
 // Settings that say nothing about retries, so the fallback is used.
-export async function settingsWithNoRetries(self: Subject, injector: Injector, checklist: Checklist): Promise<void> {
+export async function settingsWithNoRetries(injector: Injector, checklist: Checklist): Promise<void> {
     void injector;
     void checklist;
 
-    await self.files.write("/quiet.json", "{}");
-    if ((await retriesFrom(self.files, "/quiet.json")) !== 1) {
+    await fs.writeFile("/quiet.json", "{}");
+    if ((await retriesFrom("/quiet.json")) !== 1) {
         throw new Error("TheFallbackWasNotUsed");
     }
 }
 
 // Settings that say how many retries to use, so the fallback is skipped.
-export async function settingsWithRetries(self: Subject, injector: Injector, checklist: Checklist): Promise<void> {
+export async function settingsWithRetries(injector: Injector, checklist: Checklist): Promise<void> {
     void injector;
     void checklist;
 
-    if ((await retriesFrom(self.files, "/settings.json")) !== 3) {
+    if ((await retriesFrom("/settings.json")) !== 3) {
         throw new Error("TheSettingsWereNotRead");
     }
 }

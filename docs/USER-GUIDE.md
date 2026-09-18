@@ -103,9 +103,11 @@ Faultline automatically instantiates parameters where possible.
 
 It can handle ordinary values like strings, numbers, booleans, bigints, literals, unions, optionals, arrays, tuples, objects, interfaces, records, maps, sets, dates, regular expressions, URLs, byte arrays, errors, promises, functions, classes and generics.
 
-It can handle the effects your code reaches for: the clock, the network, the file system, a writer, a source of randomness, an abort signal.
+It replaces what your code reaches the machine through, so your code declares none of it: `Date`, `Date.now`, `Math.random`, `fetch`, `setTimeout`, `setInterval`, `performance.now` and `crypto`, the modules `node:fs`, `node:fs/promises`, `node:dns`, `node:http`, `node:https`, `node:net` and `node:child_process`, and in a browser `XMLHttpRequest`, `WebSocket`, `localStorage` and `sessionStorage`.
 
-It injects failures: the file system it hands you fails with `ENOENT`, `EACCES`, `EIO`, `EISDIR` and `ENOSPC` in turn, the network refuses connections, times out, resolves no name and answers with a body that will not parse, the writer sometimes takes one character of what it was given, and the clock goes backwards and jumps forward. A function it passes in throws and rejects, and an argument arrives as `null` or `undefined` whatever its type said.
+It injects failures into every one of them: a read fails with `ENOENT`, `EACCES`, `EIO`, `EISDIR` and `ENOSPC` in turn, a request is refused, times out, resolves no name, answers 500 and answers with a body that will not parse, a program is missing, will not start, ends badly or writes to the error stream, and the clock goes backwards and jumps forward. A function it passes in throws and rejects, and an argument arrives as `null` or `undefined` whatever its type said.
+
+A call that waits costs a run no time. `setTimeout` does the work at once and moves the run's own clock forward instead, so a function that sleeps for an hour is exercised in no time and still reads a clock that has moved.
 
 Faultline cannot instantiate a type whose value decides which branch runs. So you must provide one or more "test input factory" for each of those.
 
@@ -216,14 +218,14 @@ Faultline makes up argument values from their types, so it will not reach a bran
 The answer: write a scenario, a function that calls yours with that value (Claude can do this for you).
 
 ```ts
-import type { Checklist, Injector, Subject } from "faultline";
+import type { Checklist, Injector } from "faultline";
 import { formatOf } from "./image.ts";
 
 //
-// Faultline finds a scenario by its three parameters.
+// Faultline finds a scenario by its two parameters.
 // Faultline doesn't care about the function name, just choose a name that's meaningful to you.
 //
-export function runPngHeaderScenario(self: Subject, injector: Injector, checklist: Checklist): void {
+export function runPngHeaderScenario(injector: Injector, checklist: Checklist): void {
 
     //
     // Faultline hands these to every scenario. Most scenarios use neither:
@@ -256,21 +258,18 @@ A scenario runs against effects that answer, so nothing fails underneath it unle
 injector.fail("net", "refused");
 ```
 
-The failures you can ask for are `refused`, `timeout`, `dns`, `server-error` and `bad-body` on `net`; `missing`, `denied`, `io`, `is-directory` and `full` on `files`; `short`, `closed` and `broken-pipe` on `writer`; and `backwards` and `jump` on `clock`.
+The failures you can ask for are `refused`, `timeout`, `dns`, `server-error` and `bad-body` on `net`; `missing`, `denied`, `io`, `is-directory` and `full` on `files`; `short`, `closed` and `broken-pipe` on `writer`; `backwards` and `jump` on `clock`; and `missing`, `denied`, `failed` and `on-error-stream` on `process`.
 
 ## Step 7: Write invariants for what has to keep holding
 
 A scenario says one thing is true after one sequence of calls. An invariant says something is true after every call Faultline makes, whatever it called and with whatever it made up.
 
-Faultline finds an invariant by its one parameter, where a scenario has three.
+Faultline finds an invariant by its taking nothing and giving nothing back, where a scenario takes the injector.
 
 ```ts
-import type { Subject } from "faultline";
 import { theLedger } from "./ledger.ts";
 
-export function theBalanceIsNeverNegative(self: Subject): void {
-    void self;
-
+export function theBalanceIsNeverNegative(): void {
     if (theLedger.balance < 0) {
         throw new Error("TheBalanceWentNegative");
     }

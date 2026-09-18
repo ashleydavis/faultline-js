@@ -5,19 +5,9 @@
 
 import ts from "typescript";
 
-// The effects a run supplies itself. A parameter of one of these types is filled from the run's
-// own subject, so a project takes the clock, the network or the log as a parameter and writes no
-// factory.
-export type EffectKind =
-    | "clock"
-    | "rng"
-    | "net"
-    | "files"
-    | "writer"
-    | "subject"
-    | "injector"
-    | "checklist"
-    | "signal";
+// The types a run supplies itself rather than building. A sim file's scenario takes them, and a
+// file being measured takes none of them: what it reaches for is replaced underneath it.
+export type EffectKind = "injector" | "checklist" | "signal";
 
 // One property of an object a recipe builds.
 export interface Property {
@@ -66,12 +56,6 @@ const deepestRecipe = 6;
 
 // The types the run supplies, by the name each one is declared under in the runtime module.
 const effectByName: Record<string, EffectKind> = {
-    Clock: "clock",
-    Rng: "rng",
-    Net: "net",
-    Files: "files",
-    Writer: "writer",
-    Subject: "subject",
     Injector: "injector",
     Checklist: "checklist",
 };

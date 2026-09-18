@@ -314,20 +314,9 @@ export class ValueMaker {
     // Hands back one of the effects this run owns.
     private effect(kind: string): unknown {
         switch (kind) {
-            case "log":
-            case "clock":
-                return this.subject.clock;
-            case "rng":
-                return this.subject.rng;
-            case "net":
-                return this.subject.net;
-            case "files":
-                return this.subject.files;
-            case "writer":
-                return this.subject.writer;
-            case "subject":
-                return this.subject;
             case "injector":
+                return this.subject.injector;
+            case "checklist":
                 return this.subject.injector;
             case "signal":
                 return this.signal();

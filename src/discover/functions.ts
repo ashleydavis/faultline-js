@@ -304,19 +304,22 @@ function asScenarioOrInvariant(
     if (info.reach.how !== "export") {
         return undefined;
     }
-    const first = info.parameters[0];
-    if (first === undefined || first.recipe.kind !== "effect" || first.recipe.effect !== "subject") {
-        return undefined;
-    }
     const it = {
         file,
         exportName: info.reach.name,
         line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1,
     };
-    if (info.parameters.length === 1) {
+    const first = info.parameters[0];
+    if (first !== undefined && first.recipe.kind === "effect" && first.recipe.effect === "injector") {
+        return { kind: "scenario", it };
+    }
+    // An invariant takes nothing and gives nothing back. A function in a sim file that takes
+    // nothing and hands back a value of the project's own is a test input factory, and one that
+    // takes something is neither.
+    if (info.parameters.length === 0 && info.returnKey === undefined) {
         return { kind: "invariant", it };
     }
-    return { kind: "scenario", it };
+    return undefined;
 }
 
 // How the driver gets hold of a function, or why it cannot.

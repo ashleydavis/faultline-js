@@ -131,12 +131,12 @@ test("a function returning a type from outside the project is no factory", () =>
     assert.deepEqual(facts.factories, []);
 });
 
-test("a function taking the subject is a scenario, whatever it is called", () => {
+test("a function taking the injector is a scenario, whatever it is called", () => {
     const made = fixture({
         "a.sim.ts":
-            'import type { Checklist, Injector, Subject } from "faultline";\nexport function anything(s: Subject, i: Injector, c: Checklist) { void s; void i; void c; }',
+            'import type { Checklist, Injector } from "faultline";\nexport function anything(i: Injector, c: Checklist) { void i; void c; }',
         "node_modules/faultline/package.json": '{ "name": "faultline", "type": "module", "exports": "./index.ts" }',
-        "node_modules/faultline/index.ts": "export interface Subject { x: number }\nexport interface Injector { y: number }\nexport interface Checklist { z: number }",
+        "node_modules/faultline/index.ts": "export interface Injector { y: number }\nexport interface Checklist { z: number }",
     });
     made.context.runtimeFile = [`${made.root}/node_modules/faultline/index.ts`];
     const facts = readFile(made.context, made.source("a.sim.ts"), "a.sim.ts");
@@ -145,12 +145,11 @@ test("a function taking the subject is a scenario, whatever it is called", () =>
     assert.equal(facts.scenarios[0]?.exportName, "anything");
 });
 
-test("a function taking the subject alone is an invariant, not a scenario", () => {
+test("a function taking nothing and giving nothing back is an invariant, not a scenario", () => {
     const made = fixture({
-        "a.sim.ts":
-            'import type { Subject } from "faultline";\nexport function itHolds(s: Subject) { void s; }',
+        "a.sim.ts": "export function itHolds(): void {}",
         "node_modules/faultline/package.json": '{ "name": "faultline", "type": "module", "exports": "./index.ts" }',
-        "node_modules/faultline/index.ts": "export interface Subject { x: number }",
+        "node_modules/faultline/index.ts": "export interface Injector { y: number }",
     });
     made.context.runtimeFile = [`${made.root}/node_modules/faultline/index.ts`];
     const facts = readFile(made.context, made.source("a.sim.ts"), "a.sim.ts");

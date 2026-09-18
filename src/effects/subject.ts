@@ -1,13 +1,16 @@
 // What a run hands a scenario, and what it builds effect parameters from.
 
-import type { Checklist, Subject } from "../runtime/index.ts";
+import type { Checklist } from "../runtime/index.ts";
 import { RunClock, RunFiles, RunNet, RunWriter } from "./effects.ts";
 import { RunInjector, type Mode } from "./injector.ts";
 import { SeededRng } from "./random.ts";
 import { callSite } from "./site.ts";
 
 // Every effect of one run, wired to one seed and one injector.
-export class RunSubject implements Subject {
+//
+// A project never sees this. The replaced globals and modules read it off the run in flight, so
+// code that reads the clock or a file reaches this without declaring anything.
+export class RunSubject {
     // This run's source of randomness, which every effect and every made up value draws from.
     readonly rng: SeededRng;
 

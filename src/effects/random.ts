@@ -3,12 +3,11 @@
 // Every value a run makes up, every fault it injects and every order it tries comes from here, so
 // a run is reproduced by its seed and by nothing else.
 
-import type { Rng } from "../runtime/index.ts";
 
 // Mulberry32, which is thirty two bits of state and four operations per draw. It is used because a
 // run needs the same numbers on every machine, which `Math.random` does not promise, and because
 // its whole state is one number a plan can write down.
-export class SeededRng implements Rng {
+export class SeededRng {
     // The generator's whole state, advanced once per draw.
     private state: number;
 

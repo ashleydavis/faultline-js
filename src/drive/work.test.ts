@@ -2,20 +2,23 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { FileModel, RunModel } from "../model.ts";
 import type { FunctionInfo } from "../discover/functions.ts";
-import type { Files } from "../runtime/index.ts";
+import files from "../effects/shims/fs.ts";
 import type { Unit } from "./protocol.ts";
 import { runUnit, type Runtime } from "./work.ts";
 
 // A function with six places its file system could fail and one catch for all of them. Every one of
 // the six is a place to explore, and the first of them reaches the catch.
-async function readAll(files: Files): Promise<string> {
+//
+// It reads through the replaced `node:fs`, which is how a project reads, so nothing about it is
+// written for the tool.
+async function readAll(): Promise<string> {
     try {
-        await files.read("/settings.json");
-        await files.read("/notes.txt");
-        await files.read("/settings.json");
-        await files.read("/notes.txt");
-        await files.read("/settings.json");
-        await files.read("/notes.txt");
+        await files.promises.readFile("/settings.json", "utf8");
+        await files.promises.readFile("/notes.txt", "utf8");
+        await files.promises.readFile("/settings.json", "utf8");
+        await files.promises.readFile("/notes.txt", "utf8");
+        await files.promises.readFile("/settings.json", "utf8");
+        await files.promises.readFile("/notes.txt", "utf8");
         return "read them all";
     }
     catch {
@@ -30,7 +33,7 @@ const held: FunctionInfo = {
     async: true,
     line: 1,
     reach: { how: "export", name: "readAll" },
-    parameters: [{ name: "files", optional: false, rest: false, recipe: { kind: "effect", effect: "files" } }],
+    parameters: [],
 };
 
 // The file it sits in, with the two paths a run would have found in it.
@@ -84,9 +87,8 @@ function runtimeFor(reached?: (file: FileModel) => Promise<Set<string>>): { runt
 test("exploring tries every way every place can fail when no runtime can say what has run", async () => {
     const { runtime, calls } = runtimeFor();
     assert.equal(await runUnit(runtime, model, unit, []), true);
-    // One call to see where the effects are, then two ways a value can arrive as nothing and five
-    // ways each of the six reads can fail.
-    assert.equal(calls[0], 1 + 2 + 6 * 5);
+    // One call to see where the effects are, then five ways each of the six reads can fail.
+    assert.equal(calls[0], 1 + 6 * 5);
 });
 
 test("exploring stops once every path of the function has run", async () => {
