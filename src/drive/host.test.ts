@@ -19,7 +19,7 @@ function model(paths: PathSite[]): RunModel {
     return {
         root: "/tmp",
         work: "/tmp/w",
-        files: [{ file: "a.ts", module: "/tmp/w/a.mjs", functions: [], classes: [], paths }],
+        files: [{ file: "a.ts", module: "/tmp/w/a.mjs", functions: [], classes: [], paths, tests: [], properties: [] }],
         factories: [],
         scenarios: [],
         invariants: [],

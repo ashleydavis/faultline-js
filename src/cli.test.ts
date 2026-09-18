@@ -84,9 +84,20 @@ test("both sides of an if are reached without anything being written for them", 
     assert.match(run.text, /Coverage: 3 of 3 paths, 100%\./);
 });
 
-test("a branch that runs for one value only is reported, with what to do about it", async () => {
+test("a branch that runs for one value the file names is reached without a scenario", async () => {
+    // The value is written in the file, so the run reads it out and passes it in.
     const run = await over({
         "a.ts": "export function magic(word: string) {\n    if (word === 'the-one-word-no-run-makes-up') {\n        return true;\n    }\n    return false;\n}\n",
+    });
+    assert.equal(run.status, 0);
+    assert.match(run.text, /Coverage: 3 of 3 paths, 100%\./);
+});
+
+test("a branch that runs for a value the file never names is reported, with what to do about it", async () => {
+    // What the branch turns on is built at run time out of two pieces, so it is written nowhere for
+    // the run to read.
+    const run = await over({
+        "a.ts": "export function magic(word: string) {\n    if (word.length === word.split('').length + 7) {\n        return true;\n    }\n    return false;\n}\n",
     });
     assert.equal(run.status, 1);
     assert.match(run.text, /MISS magic/);

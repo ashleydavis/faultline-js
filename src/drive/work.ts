@@ -111,7 +111,7 @@ function built(maker: ValueMaker, parameter: ParameterInfo): unknown {
             throw thrown;
         }
         maker.stoodIn.push(thrown);
-        return standIn();
+        return standIn({ values: maker.tests, properties: maker.properties, at: 0 });
     }
 }
 
@@ -313,7 +313,7 @@ async function explore(
 
     const watching = new RunSubject(unit.seed, "recording", model.work);
     try {
-        await callOnce(new ValueMaker(watching, factories), module, held, file.classes);
+        await callOnce(new ValueMaker(watching, factories, 0, file), module, held, file.classes);
         calls += 1;
     }
     catch {
@@ -343,7 +343,7 @@ async function explore(
             const subject = new RunSubject(unit.seed, "exploring", model.work);
             subject.injector.explore(place, failure);
             try {
-                const answer = await callOnce(new ValueMaker(subject, factories), module, held, file.classes);
+                const answer = await callOnce(new ValueMaker(subject, factories, at, file), module, held, file.classes);
                 if (answer === "called") {
                     calls += 1;
                 }
@@ -472,7 +472,7 @@ export async function runUnit(runtime: Runtime, model: RunModel, unit: Unit, fac
             break;
         }
         try {
-            const maker = new ValueMaker(subject, factories, round);
+            const maker = new ValueMaker(subject, factories, round, file);
             const answer = await callOnce(maker, module, held, file.classes);
             const missing = maker.stoodIn[0];
             if (cannotBuild === undefined && missing !== undefined) {

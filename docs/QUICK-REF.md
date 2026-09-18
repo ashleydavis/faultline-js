@@ -129,7 +129,7 @@ export class MyLoaders {
 
 ## 7. Write scenarios for hard to reach paths
 
-Faultline makes up argument values from their types, so it will not reach a branch that runs only for one particular value, or one that needs several arguments to line up at once.
+Faultline reads the values your file's own comparisons test against and passes those in, so a branch turning on a value written in your file is reached without a scenario. A scenario is for a branch turning on a value your file never names, one worked out while the code runs, or one needing several arguments to line up at once.
 
 ```ts
 import type { Checklist, Injector } from "faultline";

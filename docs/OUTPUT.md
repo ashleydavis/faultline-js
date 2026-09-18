@@ -109,7 +109,7 @@ Exit code: 0.
 
 ## A run with a branch no call reached
 
-Captured from `examples/non-working/20-unreached-branch`. A branch that only runs for one particular value. The list says where it is and what to write.
+Captured from `examples/non-working/20-unreached-branch`. A branch turning on a value worked out while the code runs, so the file names it nowhere for the run to read. The list says where it is and what to write.
 
 ```sh
 $ flt .

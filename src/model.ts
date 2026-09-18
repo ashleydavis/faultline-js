@@ -25,6 +25,15 @@ export interface FileModel {
 
     // The code paths in it.
     paths: PathSite[];
+
+    // The values this file's own comparisons test against. A value made up for a call to one of its
+    // functions is drawn from these first, because a branch that turns on the content of an
+    // argument is reached only by an argument holding what it looks for.
+    tests: (string | number | boolean)[];
+
+    // The property names this file reads off its values, so a stand-in answers those rather than
+    // every name there is.
+    properties: string[];
 }
 
 // The whole of what the driver is told.

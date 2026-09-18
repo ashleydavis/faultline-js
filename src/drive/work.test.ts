@@ -46,6 +46,8 @@ const file: FileModel = {
         { name: "readAll:entered", describe: "the body of readAll", file: "reads.ts", line: 1, fn: "readAll", at: { line: 1, column: 0 } },
         { name: "catch:11", describe: "the catch", file: "reads.ts", line: 11, fn: "readAll", at: { line: 11, column: 4 } },
     ],
+    tests: [],
+    properties: [],
 };
 
 // The run that file belongs to.
@@ -126,6 +128,8 @@ test("a unit is after the paths of the functions written inside the one it calls
         ...file,
         functions: [held, inner],
         paths: [...file.paths, { name: "if:4:true", describe: "the true side", file: "reads.ts", line: 4, fn: "inner", at: { line: 4, column: 8 } }],
+    tests: [],
+    properties: [],
     };
     // Every path of readAll has run and the one inside inner has not, so the unit keeps trying.
     const { runtime, calls } = runtimeFor(async () => new Set(["readAll:entered", "catch:11"]));

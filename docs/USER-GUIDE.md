@@ -213,7 +213,7 @@ export function notAnImageLoader(): ImageLoader {
 
 ## Step 6: Write scenarios for hard to reach paths
 
-Faultline makes up argument values from their types, so it will not reach a branch that only runs for one particular value, like the text `"PNG"` below.
+Faultline reads the values your file's own comparisons test against and passes those in, so a branch turning on the text `"PNG"` below is reached without a scenario. A scenario is for a branch turning on a value your file never names, one worked out while the code runs, or one needing several arguments to line up at once.
 
 The answer: write a scenario, a function that calls yours with that value (Claude can do this for you).
 

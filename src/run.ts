@@ -6,6 +6,7 @@ import { emit } from "./build/emit.ts";
 import { emitDriver } from "./drive/browser.ts";
 import { buildProgram, isModuleProject, stoppingErrors } from "./build/program.ts";
 import { readFile } from "./discover/functions.ts";
+import { literalsIn } from "./discover/literals.ts";
 import type { RecipeContext } from "./discover/recipes.ts";
 import { simFileFor, walkSources } from "./discover/sources.ts";
 import { drive } from "./drive/host.ts";
@@ -114,6 +115,7 @@ export async function run(options: Options, say: Say, progress: Say): Promise<Ru
         };
         const functions = facts.functions.filter((held) => keeps(held.label));
         const paths = (emitted.paths.get(one.file) ?? []).filter((site) => keeps(site.fn));
+        const literals = literalsIn(context.checker, source);
         files.push({
             file: one.file,
             module: emitted.modules.get(one.file)!,
@@ -121,6 +123,8 @@ export async function run(options: Options, say: Say, progress: Say): Promise<Ru
             functions,
             classes: facts.classes,
             paths,
+            tests: literals.values,
+            properties: literals.properties,
         });
     }
 

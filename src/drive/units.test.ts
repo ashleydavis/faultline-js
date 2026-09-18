@@ -19,7 +19,7 @@ function model(seeds: number[], functions: FunctionInfo[], scenarios = 0): RunMo
     return {
         root: "/tmp",
         work: "/tmp/work",
-        files: [{ file: "a.ts", module: "/tmp/work/a.mjs", functions, classes: [], paths: [] }],
+        files: [{ file: "a.ts", module: "/tmp/work/a.mjs", functions, classes: [], paths: [], tests: [], properties: [] }],
         factories: [],
         scenarios: Array.from({ length: scenarios }, (_, index) => ({
             file: "a.sim.ts",

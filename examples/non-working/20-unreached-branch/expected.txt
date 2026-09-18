@@ -12,15 +12,16 @@ Deterministic simulation
 
   Found 1 source file, tested 1, exercised 1 function and executed 2 of 3 paths.
   One seed ran against effects that answered, and 15 against a network that refuses connections, a file system that fails, a writer that takes only part of what it was given and a clock that jumps, one call in 4.
+  Stepped over <count> calls for throwing on an input the function was never written for. The paths they would have covered are not in the count above.
   Swept 16 seeds, with no scenario reporting a wrong answer.
   Drove 2 rounds, each one after the first exploring only the functions with a path left.
   Full detail is in <work>/coverage-report.txt.
 
   FAIL 1 code path that no call reached:
-      magic.ts:4 "if:4:true" in isMagic: no call the run made up reached it.
+      magic.ts:8 "if:8:true" in isMagic: no call the run made up reached it.
 
   One thing to do:
-    Write a scenario reaching the true side of the if at magic.ts:4 in isMagic. No call the run made up got there.
+    Write a scenario reaching the true side of the if at magic.ts:8 in isMagic. No call the run made up got there.
 
   Coverage: 2 of 3 paths, 66%.
 

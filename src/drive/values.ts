@@ -86,9 +86,9 @@ const deepestValue = 8;
 // A symbol the runtime reads to decide what a value is answers with nothing, because a stand-in for
 // one of those makes the runtime treat the whole as something it is not: a stand-in at `then` would
 // make awaiting it never finish, and one at `Symbol.iterator` would break every loop over it.
-export function standIn(): unknown {
+export function standIn(answers: Answers = { values: [], properties: [], at: 0 }): unknown {
     const held = function standingIn(): unknown {
-        return standIn();
+        return standIn(answers);
     };
     return new Proxy(held, {
         get: (target, name) => {
@@ -97,6 +97,13 @@ export function standIn(): unknown {
             // refuses. Putting one in a template literal is ordinary code, so they answer plainly.
             if (name === "toString" || name === "valueOf" || name === Symbol.toPrimitive) {
                 return () => standInName;
+            }
+            // A property the file's own code reads is answered with one of the values that file
+            // tests against, so a branch turning on the content of the argument has something to
+            // turn on. A property it never reads is answered with another stand-in.
+            if (typeof name === "string" && answers.properties.includes(name) && answers.values.length > 0) {
+                answers.at += 1;
+                return answers.values[answers.at % answers.values.length];
             }
             if (name === "toJSON") {
                 return () => standInName;
@@ -111,12 +118,24 @@ export function standIn(): unknown {
             if (typeof name === "symbol" || name === "then" || name === "constructor" || name === "prototype") {
                 return Reflect.get(target, name) as unknown;
             }
-            return standIn();
+            return standIn(answers);
         },
         has: () => true,
-        apply: () => standIn(),
-        construct: () => standIn() as object,
+        apply: () => standIn(answers),
+        construct: () => standIn(answers) as object,
     });
+}
+
+// What a stand-in answers with, and how far through those answers it is.
+export interface Answers {
+    // The values the file being measured tests against.
+    values: (string | number | boolean)[];
+
+    // The property names it reads.
+    properties: string[];
+
+    // How many properties have been answered, so two reads of one stand-in differ.
+    at: number;
 }
 
 // What a stand-in says it is when something turns it into text. It is written so that a message
@@ -149,8 +168,18 @@ export class ValueMaker {
     // input factory for each, and calls the function with a stand-in in the meantime.
     readonly stoodIn: CannotBuild[] = [];
 
-    constructor(subject: RunSubject, factories: CallableFactory[], turn = 0) {
+    // What the file being measured tests against, which a value for one of its functions is drawn
+    // from before anything else. A branch turning on one particular value is reached by an argument
+    // holding that value, and no list written here would ever hold it.
+    readonly tests: (string | number | boolean)[];
+
+    // The property names that file reads, so a stand-in answers those.
+    readonly properties: string[];
+
+    constructor(subject: RunSubject, factories: CallableFactory[], turn = 0, file?: { tests: (string | number | boolean)[]; properties: string[] }) {
         this.turn = turn;
+        this.tests = file?.tests ?? [];
+        this.properties = file?.properties ?? [];
         this.subject = subject;
         this.factories = new Map();
         for (const one of factories) {
@@ -186,9 +215,9 @@ export class ValueMaker {
                     { kind: "array", element: { kind: "number" } },
                 ]), depth + 1);
             case "string":
-                return this.worthTrying(interestingStrings);
+                return this.worthTrying([...this.tests.filter((one) => typeof one === "string"), ...interestingStrings]);
             case "number":
-                return this.worthTrying(interestingNumbers);
+                return this.worthTrying([...this.tests.filter((one) => typeof one === "number"), ...interestingNumbers]);
             case "bigint":
                 return BigInt(rng.int(-1000, 1000));
             case "boolean":
