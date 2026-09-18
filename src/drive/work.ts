@@ -11,7 +11,7 @@ import { effectIn, failuresByEffect, pointName, type Point } from "../effects/in
 import { RunChecklist, RunSubject } from "../effects/subject.ts";
 import type { FileModel, RunModel } from "../model.ts";
 import { functionKey, type FromDriver, type Unit } from "./protocol.ts";
-import { callsPerUnit } from "./units.ts";
+import { callsPerUnit, mostCalls } from "./units.ts";
 import { CannotBuild, standIn, ValueMaker, type CallableFactory } from "./values.ts";
 
 // What a runtime has to supply for the driving to happen in it.
@@ -111,7 +111,7 @@ function built(maker: ValueMaker, parameter: ParameterInfo): unknown {
             throw thrown;
         }
         maker.stoodIn.push(thrown);
-        return standIn({ values: maker.tests, properties: maker.properties, at: 0 });
+        return standIn({ values: maker.tests, properties: maker.properties, at: maker.at, given: new Map() });
     }
 }
 
@@ -406,11 +406,17 @@ function stillWanted(runtime: Runtime, file: FileModel, held: FunctionInfo): Pat
 // Whether every path the exploring is after has run. A runtime that cannot read what has run while
 // it is still driving answers no, so every combination is tried.
 async function allRan(runtime: Runtime, file: FileModel, wanted: PathSite[]): Promise<boolean> {
-    if (runtime.reached === undefined) {
-        return false;
+    return (await stillToRun(runtime, file, wanted)) === 0;
+}
+
+// How many of the paths a unit is after have still to run. A runtime that cannot read what has run
+// while it is still driving answers that they all have, so every combination is tried.
+async function stillToRun(runtime: Runtime, file: FileModel, wanted: PathSite[]): Promise<number> {
+    if (runtime.reached === undefined || wanted.length === 0) {
+        return wanted.length;
     }
     const ran = await runtime.reached(file);
-    return wanted.every((one) => ran.has(one.name));
+    return wanted.filter((one) => !ran.has(one.name)).length;
 }
 
 // Runs one unit and says whether the run carries on. A scenario that says the answer is wrong
@@ -467,9 +473,32 @@ export async function runUnit(runtime: Runtime, model: RunModel, unit: Unit, fac
     // reason to keep trying values.
     const wanted = stillWanted(runtime, file, held);
 
-    for (let round = 0; round < callsPerUnit; round += 1) {
-        if (round > 0 && (await allRan(runtime, file, wanted))) {
-            break;
+    // How many turns in a row may reach no path the unit did not already have before it stops.
+    //
+    // A unit stops when every path has run. One whose paths cannot all be reached would otherwise
+    // run to the cap for every function of every seed, so it stops when it stops making progress
+    // instead, and a turn per entry of the longest list of values is long enough to be sure the
+    // progress has really stopped.
+    const patience = callsPerUnit;
+    let reached = 0;
+    let quiet = 0;
+
+    for (let round = 0; round < mostCalls; round += 1) {
+        if (round > 0) {
+            const ran = await stillToRun(runtime, file, wanted);
+            if (ran === 0) {
+                break;
+            }
+            if (wanted.length - ran > reached) {
+                reached = wanted.length - ran;
+                quiet = 0;
+            }
+            else {
+                quiet += 1;
+                if (quiet >= patience) {
+                    break;
+                }
+            }
         }
         try {
             const maker = new ValueMaker(subject, factories, round, file);

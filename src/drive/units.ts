@@ -11,6 +11,14 @@ import { mostTurns } from "./values.ts";
 // costs one call rather than all of them.
 export const callsPerUnit = mostTurns;
 
+// How many calls one unit may make before it stops whatever it is still reaching.
+//
+// A unit keeps going while it is still reaching paths it did not have, so a function whose
+// arguments have to line up in a way one turn does not manage gets more turns to manage it. The cap
+// is what stops a function that would go on reaching one more path for ever, and a turn per pair of
+// entries of the longest list is as far as lining two arguments up is worth taking.
+export const mostCalls = mostTurns * mostTurns;
+
 // Builds the work for a later round: one unit per function that still has a path nothing reached.
 export function buildExploration(model: RunModel, unreached: Set<string>, seed: number): Unit[] {
     const units: Unit[] = [];

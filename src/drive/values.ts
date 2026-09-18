@@ -86,7 +86,7 @@ const deepestValue = 8;
 // A symbol the runtime reads to decide what a value is answers with nothing, because a stand-in for
 // one of those makes the runtime treat the whole as something it is not: a stand-in at `then` would
 // make awaiting it never finish, and one at `Symbol.iterator` would break every loop over it.
-export function standIn(answers: Answers = { values: [], properties: [], at: 0 }): unknown {
+export function standIn(answers: Answers = { values: [], properties: [], at: 0, given: new Map() }): unknown {
     const held = function standingIn(): unknown {
         return standIn(answers);
     };
@@ -101,9 +101,18 @@ export function standIn(answers: Answers = { values: [], properties: [], at: 0 }
             // A property the file's own code reads is answered with one of the values that file
             // tests against, so a branch turning on the content of the argument has something to
             // turn on. A property it never reads is answered with another stand-in.
+            //
+            // The answer is remembered, so reading one property twice gives one value. Code that
+            // asks the same question twice and gets two answers takes a path no real value ever
+            // takes it down.
             if (typeof name === "string" && answers.properties.includes(name) && answers.values.length > 0) {
-                answers.at += 1;
-                return answers.values[answers.at % answers.values.length];
+                const already = answers.given.get(name);
+                if (already !== undefined) {
+                    return already;
+                }
+                const picked = answers.values[(answers.at + answers.given.size) % answers.values.length];
+                answers.given.set(name, picked);
+                return picked;
             }
             if (name === "toJSON") {
                 return () => standInName;
@@ -134,8 +143,12 @@ export interface Answers {
     // The property names it reads.
     properties: string[];
 
-    // How many properties have been answered, so two reads of one stand-in differ.
+    // Where in the values this stand-in starts. It comes from the turn of the calling, so the next
+    // turn answers with different values.
     at: number;
+
+    // What each property has already been answered with, so asking twice gives one answer.
+    given: Map<string, string | number | boolean>;
 }
 
 // What a stand-in says it is when something turns it into text. It is written so that a message
@@ -159,9 +172,7 @@ export class ValueMaker {
     // reaches it rather than by luck.
     private readonly turn: number;
 
-    // How many values worth trying have been handed out on this turn. Together with the turn it
-    // says which entry comes next, so one call's several arguments are different values and the
-    // next turn moves all of them on.
+    // How many values worth trying have been handed out on this turn.
     private handedOut = 0;
 
     // Every type this maker had to stand in for, in the order it met them. The run asks for a test
@@ -175,6 +186,11 @@ export class ValueMaker {
 
     // The property names that file reads, so a stand-in answers those.
     readonly properties: string[];
+
+    // Which turn of the calling this is, for a stand-in to start its answers from.
+    get at(): number {
+        return this.turn;
+    }
 
     constructor(subject: RunSubject, factories: CallableFactory[], turn = 0, file?: { tests: (string | number | boolean)[]; properties: string[] }) {
         this.turn = turn;
@@ -371,10 +387,20 @@ export class ValueMaker {
     // The lists are walked rather than drawn from. A list holds every value some piece of code
     // treats apart from the rest, so walking it reaches a branch on `x === 0` on the turn that
     // reaches it, where drawing left it to luck and missed it about one short run in thirty.
+    //
+    // The turns of one unit go round in blocks. Inside a block every value a call asks for moves on
+    // every turn, so each of them is tried against every entry of its own list. Each block after
+    // the first spreads them further apart, so the second argument meets a different entry of the
+    // first argument's list than it met in the block before.
+    //
+    // Moving one argument only once the one before it had gone all the way round would cover the
+    // combinations exactly, and it was tried: a unit stops once it stops reaching paths, and an
+    // argument that waits twenty turns to move never moves at all.
     private worthTrying<T>(values: readonly T[]): T {
-        const at = this.turn + this.handedOut;
+        const block = 1 + Math.floor(this.turn / mostTurns);
+        const at = (this.turn + this.handedOut * block) % values.length;
         this.handedOut += 1;
-        return values[at % values.length]!;
+        return values[at]!;
     }
 
     // Sometimes hands back nothing at all in place of a value, whatever the type said.

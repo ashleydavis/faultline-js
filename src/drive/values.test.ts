@@ -11,10 +11,13 @@ function maker(seed = 1, factories: ConstructorParameters<typeof ValueMaker>[1] 
 
 // Every value one recipe builds over a run of draws.
 function many(recipe: Recipe, count = 200, seed = 1): unknown[] {
-    const one = maker(seed);
+    // A turn per value over one run, the way the driving makes one maker per call and one run for
+    // the unit they all belong to. One maker asked twice is one call asking for two arguments, and
+    // those move on at different rates.
+    const subject = new RunSubject(seed, "clean");
     const out: unknown[] = [];
     for (let index = 0; index < count; index += 1) {
-        out.push(one.make(recipe));
+        out.push(new ValueMaker(subject, [], index).make(recipe));
     }
     return out;
 }
@@ -296,16 +299,36 @@ test("two makers on one seed build the same values", () => {
 });
 
 test("a list of values worth trying is walked rather than drawn from", () => {
-    // One turn hands out the entries in order, so one call's several arguments differ.
-    const one = new ValueMaker(new RunSubject(1, "clean"), [], 0);
-    const drawn = [0, 1, 2].map(() => one.make({ kind: "string" }));
-    assert.deepEqual(drawn, interestingStrings.slice(0, 3));
+    const one = new ValueMaker(new RunSubject(1, "clean"), [], 3);
+    assert.equal(one.make({ kind: "string" }), interestingStrings[3]);
 });
 
-test("the next turn moves every value on by one", () => {
-    const next = new ValueMaker(new RunSubject(1, "clean"), [], 1);
-    assert.equal(next.make({ kind: "string" }), interestingStrings[1]);
-    assert.equal(next.make({ kind: "string" }), interestingStrings[2]);
+test("the first value a call asks for moves on every turn", () => {
+    for (let turn = 0; turn < interestingStrings.length; turn += 1) {
+        const one = new ValueMaker(new RunSubject(1, "clean"), [], turn);
+        assert.equal(one.make({ kind: "string" }), interestingStrings[turn]);
+    }
+});
+
+test("two arguments of one call are different values", () => {
+    const one = new ValueMaker(new RunSubject(1, "clean"), [], 0);
+    assert.notEqual(one.make({ kind: "string" }), one.make({ kind: "string" }));
+});
+
+test("a later block of turns pairs the two arguments up differently", () => {
+    // Both arguments go through every entry of their own list in each block, and the block they are
+    // in says how far apart they sit, so the pairs differ from block to block.
+    const pairs = (turn: number): string => {
+        const one = new ValueMaker(new RunSubject(1, "clean"), [], turn);
+        return `${String(one.make({ kind: "string" }))}|${String(one.make({ kind: "string" }))}`;
+    };
+    const first = new Set<string>();
+    const second = new Set<string>();
+    for (let turn = 0; turn < mostTurns; turn += 1) {
+        first.add(pairs(turn));
+        second.add(pairs(turn + mostTurns));
+    }
+    assert.equal([...second].some((one) => first.has(one)), false);
 });
 
 test("the turns together try every value worth trying", () => {
