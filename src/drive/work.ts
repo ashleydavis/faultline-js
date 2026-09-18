@@ -6,7 +6,7 @@
 
 import type { ClassInfo, FunctionInfo, ParameterInfo } from "../discover/functions.ts";
 import type { PathSite } from "../discover/paths.ts";
-import { failuresByEffect, pointName } from "../effects/injector.ts";
+import { effectIn, failuresByEffect, pointName } from "../effects/injector.ts";
 import { RunChecklist, RunSubject } from "../effects/subject.ts";
 import type { FileModel, RunModel } from "../model.ts";
 import { functionKey, type FromDriver, type Unit } from "./protocol.ts";
@@ -208,7 +208,7 @@ async function explore(
     let calls = 0;
     let stepped = 0;
 
-    const watching = new RunSubject(unit.seed, "recording");
+    const watching = new RunSubject(unit.seed, "recording", model.work);
     try {
         await callOnce(new ValueMaker(watching, factories), module, held, file.classes);
         calls += 1;
@@ -217,25 +217,30 @@ async function explore(
         stepped += 1;
     }
 
-    const places: string[] = [];
-    for (const point of watching.injector.recorded) {
-        const name = pointName(point);
-        if (!places.includes(name)) {
-            places.push(name);
-        }
-    }
+    // Every place the call reached, with the first turn at each site before the second turn at any
+    // of them. A loop that reads ten files is ten turns at one site, and taking them in the order
+    // they happened would spend the whole budget inside the loop before any site after it was
+    // tried.
+    const places = watching.injector.recorded
+        .map((point, order) => ({ name: pointName(point), occurrence: point.occurrence, order }))
+        .filter((one, at, all) => all.findIndex((other) => other.name === one.name) === at)
+        .sort((left, right) => left.occurrence - right.occurrence || left.order - right.order)
+        .map((one) => one.name);
 
     // The paths of this function an earlier round has yet to reach. They are what the exploring is
     // for, so reaching all of them is what finishes it.
     const wanted = file.paths.filter((one) => one.fn === held.label && !runtime.ticked.has(`${one.file}:${one.name}`));
 
     combinations: for (const place of places.slice(0, mostPointsExplored)) {
-        const effect = place.slice(0, place.indexOf("#")) as keyof typeof failuresByEffect;
-        for (const failure of failuresByEffect[effect] ?? []) {
+        const effect = effectIn(place);
+        if (effect === undefined) {
+            continue;
+        }
+        for (const failure of failuresByEffect[effect]) {
             if (await allRan(runtime, file, wanted)) {
                 break combinations;
             }
-            const subject = new RunSubject(unit.seed, "exploring");
+            const subject = new RunSubject(unit.seed, "exploring", model.work);
             subject.injector.explore(place, failure);
             try {
                 const answer = await callOnce(new ValueMaker(subject, factories), module, held, file.classes);

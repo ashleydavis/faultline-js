@@ -6,6 +6,7 @@
 
 import type { EffectName, Injector } from "../runtime/index.ts";
 import type { SeededRng } from "./random.ts";
+import { callSite } from "./site.ts";
 
 // The ways each effect can go wrong. An effect only ever fails with one of its own names, so a
 // plan naming a failure is either understood or refused.
@@ -51,20 +52,32 @@ export interface AskedFailure {
 // how every one of them is reached rather than the ones the dice happened to land on.
 export type Mode = "clean" | "faulting" | "recording" | "exploring";
 
-// One place an effect was called, named so a later run can fail exactly that one. It is the effect
-// and how many times that effect had been called when it was reached, which is enough to tell two
-// calls to the same effect in one function apart.
+// One place an effect was called, named so a later run can fail exactly that one. It is the effect,
+// where in the code under test it was called from, and how many times it had been called from there
+// already, which tells two reads in one function apart and tells the turns of a loop apart.
 export interface Point {
     // Which effect was called.
     effect: EffectName;
 
-    // How many times that effect had been called before this one.
+    // Where the code under test called it from, as the file, the line and the column. It is empty
+    // when the runtime gave no stack to read.
+    site: string;
+
+    // How many times the effect had been called from that site before this one.
     occurrence: number;
 }
 
 // A point written the one way, so a plan and a unit name it the same.
 export function pointName(point: Point): string {
-    return `${point.effect}#${point.occurrence}`;
+    return `${point.effect}@${point.site}#${point.occurrence}`;
+}
+
+// Which effect a point's name belongs to. The name of an effect holds no "@", so the first one is
+// where the name ends and the site begins.
+export function effectIn(name: string): EffectName | undefined {
+    const at = name.indexOf("@");
+    const effect = at < 0 ? name : name.slice(0, at);
+    return effect in failuresByEffect ? (effect as EffectName) : undefined;
 }
 
 // Answers every effect's question of whether this call fails.
@@ -81,14 +94,18 @@ export class RunInjector implements Injector {
     // mode and left empty in every other.
     readonly recorded: Point[] = [];
 
-    // How many times each effect has been asked about. This numbers a point.
-    private readonly seen = new Map<EffectName, number>();
+    // How many times each effect has been asked about from each site. This numbers a point.
+    private readonly seen = new Map<string, number>();
 
     // The one point to fail in exploring mode, and what to fail it with.
     private exploring?: { point: string; failure: string };
 
     // Where the draw below comes from.
     private readonly rng: SeededRng;
+
+    // Says where the code under test called the effect from. A run reads it off the stack, and a
+    // test hands one in so a call made from the tool's own files still names a site.
+    private readonly site: () => string;
 
     // Whether anything fails without a scenario asking for it.
     private readonly mode: Mode;
@@ -98,10 +115,11 @@ export class RunInjector implements Injector {
     // path is exercised too rarely to be sure it works.
     private readonly oneIn: number;
 
-    constructor(rng: SeededRng, mode: Mode, oneIn = 4) {
+    constructor(rng: SeededRng, mode: Mode, oneIn = 4, site: () => string = () => callSite()) {
         this.rng = rng;
         this.mode = mode;
         this.oneIn = oneIn;
+        this.site = site;
     }
 
     // Says which one point to fail, and with what. Only an exploring injector is told this.
@@ -127,9 +145,13 @@ export class RunInjector implements Injector {
     // Asks whether the next call to `effect` fails, and takes the answer off the queue when it
     // does. An effect calls this once per call and never decides for itself.
     check(effect: EffectName): string | undefined {
-        const occurrence = this.seen.get(effect) ?? 0;
-        this.seen.set(effect, occurrence + 1);
-        const here: Point = { effect, occurrence };
+        // Reading the stack costs more than everything else this does, and only the two modes that
+        // name a point have a use for it.
+        const site = this.mode === "recording" || this.mode === "exploring" ? this.site() : "";
+        const key = `${effect}@${site}`;
+        const occurrence = this.seen.get(key) ?? 0;
+        this.seen.set(key, occurrence + 1);
+        const here: Point = { effect, site, occurrence };
 
         if (this.mode === "recording") {
             if (failuresByEffect[effect].length > 0) {

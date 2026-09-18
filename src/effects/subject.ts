@@ -4,6 +4,7 @@ import type { Checklist, Subject } from "../runtime/index.ts";
 import { RunClock, RunFiles, RunNet, RunWriter } from "./effects.ts";
 import { RunInjector, type Mode } from "./injector.ts";
 import { SeededRng } from "./random.ts";
+import { callSite } from "./site.ts";
 
 // Every effect of one run, wired to one seed and one injector.
 export class RunSubject implements Subject {
@@ -27,9 +28,12 @@ export class RunSubject implements Subject {
 
     // Builds every effect from one seed. Two subjects built with the same seed and the same mode
     // answer identically, and that is how a run is replayed.
-    constructor(seed: number, mode: Mode) {
+    //
+    // `work` is where the copies of the project were put, so a place an effect could fail is named
+    // by the path in the project rather than by that run's own directory.
+    constructor(seed: number, mode: Mode, work = "") {
         this.rng = new SeededRng(seed);
-        this.injector = new RunInjector(this.rng, mode);
+        this.injector = new RunInjector(this.rng, mode, 4, () => callSite(work));
         this.clock = new RunClock(this.injector);
         this.net = new RunNet(this.injector, this.rng);
         this.files = new RunFiles(this.injector);

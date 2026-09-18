@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { failuresByEffect, pointName, rateByEffect, RunInjector } from "./injector.ts";
+import { effectIn, failuresByEffect, pointName, rateByEffect, RunInjector } from "./injector.ts";
 import { SeededRng } from "./random.ts";
 
 // Builds an injector that fails only what is asked of it.
@@ -106,17 +106,38 @@ test("a value arriving as nothing is one of the failures a run can ask for", () 
     assert.throws(() => injector.fail("values", "made up"), /no failure named/);
 });
 
-test("a point is named by its effect and how many of that effect came before it", () => {
-    assert.equal(pointName({ effect: "files", occurrence: 2 }), "files#2");
+test("a point is named by its effect, where it was called from and how many came before it there", () => {
+    assert.equal(pointName({ effect: "files", site: "/work/reads.ts:6:21", occurrence: 2 }), "files@/work/reads.ts:6:21#2");
+});
+
+test("two reads on different lines are two places even though one effect made both", () => {
+    const first = pointName({ effect: "files", site: "/work/reads.ts:6:21", occurrence: 0 });
+    const second = pointName({ effect: "files", site: "/work/reads.ts:7:21", occurrence: 0 });
+    assert.notEqual(first, second);
 });
 
 test("a recording injector writes down every place an effect could fail and fails none", () => {
-    const injector = new RunInjector(new SeededRng(1), "recording");
+    // One line calling the same effect three times over, as a loop does.
+    const injector = new RunInjector(new SeededRng(1), "recording", 4, () => "/work/reads.ts:6:21");
     for (let index = 0; index < 3; index += 1) {
         assert.equal(injector.check("files"), undefined);
     }
     assert.equal(injector.check("net"), undefined);
-    assert.deepEqual(injector.recorded.map(pointName), ["files#0", "files#1", "files#2", "net#0"]);
+    assert.deepEqual(injector.recorded.map(pointName), [
+        "files@/work/reads.ts:6:21#0",
+        "files@/work/reads.ts:6:21#1",
+        "files@/work/reads.ts:6:21#2",
+        "net@/work/reads.ts:6:21#0",
+    ]);
+});
+
+test("two calls on different lines are two places, each reached once", () => {
+    const lines = ["/work/reads.ts:6:21", "/work/reads.ts:7:21"];
+    let next = 0;
+    const injector = new RunInjector(new SeededRng(1), "recording", 4, () => lines[next++]!);
+    injector.check("files");
+    injector.check("files");
+    assert.deepEqual(injector.recorded.map(pointName), ["files@/work/reads.ts:6:21#0", "files@/work/reads.ts:7:21#0"]);
 });
 
 test("an effect with no failure of its own is not a place worth exploring", () => {
@@ -126,8 +147,8 @@ test("an effect with no failure of its own is not a place worth exploring", () =
 });
 
 test("an exploring injector fails the one place it was told and no other", () => {
-    const injector = new RunInjector(new SeededRng(1), "exploring");
-    injector.explore("files#1", "denied");
+    const injector = new RunInjector(new SeededRng(1), "exploring", 4, () => "/work/reads.ts:6:21");
+    injector.explore("files@/work/reads.ts:6:21#1", "denied");
     assert.equal(injector.check("files"), undefined);
     assert.equal(injector.check("files"), "denied");
     assert.equal(injector.check("files"), undefined);
@@ -142,8 +163,8 @@ test("an exploring injector told nothing fails nothing", () => {
 });
 
 test("the place an exploring injector failed is written down", () => {
-    const injector = new RunInjector(new SeededRng(1), "exploring");
-    injector.explore("net#0", "refused");
+    const injector = new RunInjector(new SeededRng(1), "exploring", 4, () => "/work/calls.ts:3:9");
+    injector.explore("net@/work/calls.ts:3:9#0", "refused");
     injector.check("net");
     assert.deepEqual(injector.handedOut, [{ effect: "net", failure: "refused" }]);
 });
@@ -154,4 +175,17 @@ test("two injectors on one seed fail the same calls", () => {
     for (let index = 0; index < 200; index += 1) {
         assert.equal(left.check("net"), right.check("net"));
     }
+});
+
+test("the effect a point belongs to is read off the front of its name", () => {
+    assert.equal(effectIn("files@/work/reads.ts:6:21#2"), "files");
+    assert.equal(effectIn("net@/work/calls.ts:3:9#0"), "net");
+});
+
+test("a point whose site was not read still names its effect", () => {
+    assert.equal(effectIn("files@#0"), "files");
+});
+
+test("a name that belongs to no effect is refused rather than read as one", () => {
+    assert.equal(effectIn("made-up@/work/a.ts:1:1#0"), undefined);
 });
