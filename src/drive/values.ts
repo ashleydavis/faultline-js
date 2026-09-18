@@ -175,6 +175,9 @@ export class ValueMaker {
     // How many values worth trying have been handed out on this turn.
     private handedOut = 0;
 
+    // How many times one of several ways to build a value has been chosen on this turn.
+    private chosen = 0;
+
     // Every type this maker had to stand in for, in the order it met them. The run asks for a test
     // input factory for each, and calls the function with a stand-in in the meantime.
     readonly stoodIn: CannotBuild[] = [];
@@ -327,7 +330,14 @@ export class ValueMaker {
         if (buildable.length === 0) {
             throw new CannotBuild(options.map((one) => one.kind).join(" | "));
         }
-        return this.make(this.subject.rng.pick(buildable), depth + 1);
+        // Worked through by turn rather than drawn from. A union of one of three things is three
+        // draws away from covering all of it, and a parameter of a compiler's own node type is a
+        // union of hundreds: drawing one left almost every one of them untried.
+        //
+        // Counted apart from the values a call asks for. A union met part way through building an
+        // argument would otherwise move every value after it along, and which entry of a list an
+        // argument gets would turn on what some other argument happened to be made of.
+        return this.make(this.oneOf(buildable), depth + 1);
     }
 
     // Builds a list. The empty one is drawn often, because the code that handles an empty list is
@@ -380,6 +390,13 @@ export class ValueMaker {
             }
             return this.make(returns, depth + 1);
         };
+    }
+
+    // Takes one of several ways to build a value, worked through by turn.
+    private oneOf<T>(values: readonly T[]): T {
+        const at = (this.turn + this.chosen) % values.length;
+        this.chosen += 1;
+        return values[at]!;
     }
 
     // Takes the next entry of a list of values worth trying.
