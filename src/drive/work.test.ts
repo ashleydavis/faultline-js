@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { FileModel, RunModel } from "../model.ts";
 import type { FunctionInfo } from "../discover/functions.ts";
+import { failuresByEffect } from "../effects/injector.ts";
 import files from "../effects/shims/fs.ts";
 import type { Unit } from "./protocol.ts";
 import { runUnit, type Runtime } from "./work.ts";
@@ -89,8 +90,8 @@ function runtimeFor(reached?: (file: FileModel) => Promise<Set<string>>): { runt
 test("exploring tries every way every place can fail when no runtime can say what has run", async () => {
     const { runtime, calls } = runtimeFor();
     assert.equal(await runUnit(runtime, model, unit, []), true);
-    // One call to see where the effects are, then five ways each of the six reads can fail.
-    assert.equal(calls[0], 1 + 6 * 5);
+    // One call to see where the effects are, then every way each of the six reads can fail.
+    assert.equal(calls[0], 1 + 6 * failuresByEffect.files.length);
 });
 
 test("exploring stops once every path of the function has run", async () => {

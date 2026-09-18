@@ -118,10 +118,32 @@ test("the files a run starts with can be read", async () => {
     assert.equal(await files.exists("/settings.json"), true);
 });
 
-test("a file that is not there says so with the code a missing file has", async () => {
+test("a path the run was never told about is there and holds something", async () => {
     const files = new RunFiles(clean());
-    await assert.rejects(files.read("/gone"), (thrown: CodedError) => thrown.code === "ENOENT");
-    assert.equal(await files.exists("/gone"), false);
+    assert.ok((await files.read("/gone")).length > 0);
+    assert.equal(await files.exists("/gone"), true);
+});
+
+test("a read the injector fails says so with the code a missing file has", async () => {
+    const injector = clean();
+    injector.fail("files", "missing");
+    await assert.rejects(new RunFiles(injector).read("/settings.json"), (thrown: CodedError) => thrown.code === "ENOENT");
+});
+
+test("what a path the run was never told about holds is the fields the file being measured reads", async () => {
+    const files = new RunFiles(clean());
+    files.holds(["retries", "verbose"], [7, true], 2);
+    assert.deepEqual(JSON.parse(await files.read("/anything")), { retries: 7, verbose: true });
+});
+
+test("one field is left out per turn, so the code filling in a default is reached", async () => {
+    const files = new RunFiles(clean());
+    const seen = new Set<string>();
+    for (let turn = 0; turn < 3; turn += 1) {
+        files.holds(["retries", "verbose"], [7, true], turn);
+        seen.add(await files.read("/anything"));
+    }
+    assert.equal(seen.size, 3);
 });
 
 test("what was written can be read back", async () => {
@@ -137,11 +159,17 @@ test("bytes come back as the text encoded", async () => {
     assert.deepEqual(await files.readBytes("/b.txt"), new Uint8Array([97, 98]));
 });
 
-test("a file can be removed, and removing it twice says so", async () => {
+test("a file that was removed no longer holds what it held", async () => {
     const files = new RunFiles(clean());
     await files.write("/c.txt", "x");
     await files.remove("/c.txt");
-    await assert.rejects(files.remove("/c.txt"), (thrown: CodedError) => thrown.code === "ENOENT");
+    assert.notEqual(await files.read("/c.txt"), "x");
+});
+
+test("a removal the injector fails says so with the code a missing file has", async () => {
+    const injector = clean();
+    injector.fail("files", "missing");
+    await assert.rejects(new RunFiles(injector).remove("/c.txt"), (thrown: CodedError) => thrown.code === "ENOENT");
 });
 
 test("a listing names each directory once", async () => {

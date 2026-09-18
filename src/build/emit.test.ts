@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import ts from "typescript";
 import { fixture } from "../testing.ts";
-import { emit, isUnder, makeWorkDirectory, moduleNameFor, namesAnAsset, relativeSpecifier, toRelative, transpile } from "./emit.ts";
+import { emit, isUnder, makeWorkDirectory, moduleNameFor, namesAnAsset, relativeSpecifier, removeOldRuns, toRelative, transpile } from "./emit.ts";
 
 test("a rewritten copy keeps the file's place in the tree and is a module", () => {
     assert.equal(moduleNameFor("src/a.ts"), "src/a.mjs");
@@ -156,4 +157,28 @@ test("a copy carries no counter of its own, because V8 does the counting", () =>
     assert.match(text, /export function f\(\) \{\s*return 1;/);
     fs.rmSync(done.work, { recursive: true, force: true });
     made.remove();
+});
+
+test("a run takes away what earlier runs left behind", () => {
+    const inside = os.tmpdir();
+    const made: string[] = [];
+    for (let at = 0; at < 8; at += 1) {
+        const where = fs.mkdtempSync(path.join(inside, `faultline-test-${String(at)}-`));
+        // Aged apart, so which one is newest is not down to how fast the machine made them.
+        fs.utimesSync(where, new Date(), new Date(Date.now() - (8 - at) * 60000));
+        made.push(where);
+    }
+    try {
+        removeOldRuns();
+        const left = made.filter((one) => fs.existsSync(one));
+        // The newest few are kept, because the run that just finished names one of them.
+        assert.ok(left.length <= 4, `${String(left.length)} left`);
+        assert.ok(left.includes(made[7]!), "the newest was taken away");
+        assert.equal(left.includes(made[0]!), false, "the oldest was kept");
+    }
+    finally {
+        for (const one of made) {
+            fs.rmSync(one, { recursive: true, force: true });
+        }
+    }
 });

@@ -140,6 +140,10 @@ export class RunFiles {
     // made, so a read after a write works without the directory being made first.
     private readonly directories = new Set<string>(["/"]);
 
+    // Whether the next read hands back something that will not parse. The injector says so, and it
+    // is the case a caller that parses without catching gets wrong.
+    private unreadable = false;
+
     // What decides which of these file operations go wrong.
     private readonly injector: RunInjector;
 
@@ -175,14 +179,42 @@ export class RunFiles {
         this.removeNow(path);
     }
 
+    // What a path the run was never told about holds.
+    //
+    // Every path this file system is asked about is there. Which made up string a call was given is
+    // an accident, and whether a read fails is the injector's to decide: it fails one, and the
+    // exploring reaches every way it can. A tree where only two paths existed meant a read almost
+    // always failed, so the code that does something with what it read almost never ran.
+    private unasked = '{"name":"faultline","retries":3,"verbose":true}';
+
+    // Says what a path the run was never told about holds. The properties are the ones the file
+    // being measured reads, so code that reads a field off what it parsed finds that field there.
+    //
+    // One property is left out per turn, working round them. A settings file that always held every
+    // field the code reads would never reach the code that fills in a default for a missing one,
+    // and a field being absent is the commonest thing about a real settings file.
+    holds(properties: string[], values: (string | number | boolean)[], turn = 0): void {
+        if (properties.length === 0) {
+            return;
+        }
+        const without = turn % (properties.length + 1);
+        const out: Record<string, unknown> = {};
+        for (let at = 0; at < properties.length; at += 1) {
+            if (at === without) {
+                continue;
+            }
+            out[properties[at]!] = values[at % Math.max(values.length, 1)] ?? at;
+        }
+        this.unasked = JSON.stringify(out);
+    }
+
     // Reads one file, and throws the way the runtime throws when it cannot.
     readNow(path: string): string {
         this.refuse(path, "open");
-        const found = this.contents.get(clean(path));
-        if (found === undefined) {
-            throw new CodedError("ENOENT", `ENOENT: no such file or directory, open '${path}'`);
+        if (this.unreadable) {
+            return "<not json at all>";
         }
-        return found;
+        return this.contents.get(clean(path)) ?? this.unasked;
     }
 
     // Writes one file, replacing what was there, and makes the directories above it.
@@ -205,8 +237,8 @@ export class RunFiles {
         }
     }
 
-    // Whether a file or a directory is there. It asks the injector, but a failure answers no rather
-    // than throwing, because that is what the runtime does.
+    // Whether a file or a directory is there. Everything is, unless the injector fails this call,
+    // and a failure answers no rather than throwing because that is what the runtime does.
     existsNow(path: string): boolean {
         try {
             this.refuse(path, "stat");
@@ -214,8 +246,7 @@ export class RunFiles {
         catch {
             return false;
         }
-        const at = clean(path);
-        return this.contents.has(at) || this.directories.has(at);
+        return true;
     }
 
     // What one directory holds, as names rather than paths.
@@ -232,12 +263,11 @@ export class RunFiles {
         return [...names].sort();
     }
 
-    // Takes one file away.
+    // Takes one file away. A path the run was never told about is there like any other, so this
+    // fails only when the injector fails it.
     removeNow(path: string): void {
         this.refuse(path, "unlink");
-        if (!this.contents.delete(clean(path))) {
-            throw new CodedError("ENOENT", `ENOENT: no such file or directory, unlink '${path}'`);
-        }
+        this.contents.delete(clean(path));
     }
 
     // Makes one directory, and the ones above it.
@@ -261,7 +291,8 @@ export class RunFiles {
         if (this.directories.has(at)) {
             return { isFile: false, isDirectory: true, size: 0 };
         }
-        throw new CodedError("ENOENT", `ENOENT: no such file or directory, stat '${path}'`);
+        // A path the run was never told about is a file holding what a read of it gives back.
+        return { isFile: true, isDirectory: false, size: this.unasked.length };
     }
 
     // Moves one file, keeping what is in it.
@@ -289,6 +320,13 @@ export class RunFiles {
         if (failure === "full") {
             throw new CodedError("ENOSPC", `ENOSPC: no space left on device, ${operation} '${path}'`);
         }
+        if (failure === "unreadable") {
+            // The file is there and holds something the caller cannot make sense of. A read gives
+            // it back, and the code that handles a settings file somebody has broken runs.
+            this.unreadable = true;
+            return;
+        }
+        this.unreadable = false;
     }
 }
 

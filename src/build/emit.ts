@@ -78,9 +78,55 @@ export function namesAnAsset(specifier: string): boolean {
     return !loadable.includes(withoutQuery.slice(dot).toLowerCase());
 }
 
+// How many runs' work directories are kept. The newest is what the report names, so it has to still
+// be there when the run ends, and the few before it are kept so two runs side by side do not take
+// each other's away. Everything older is a run somebody has finished reading about.
+const keptRuns = 4;
+
+// Takes away what earlier runs left behind.
+//
+// Every run writes a copy of the project, and nothing was ever removing them. This machine had six
+// thousand of them holding eighteen gigabytes before anybody noticed, and a run that fills a disk
+// is a run that stops working.
+export function removeOldRuns(): void {
+    const inside = os.tmpdir();
+    let held: string[];
+    try {
+        held = fs.readdirSync(inside).filter((one) => one.startsWith("faultline-"));
+    }
+    catch {
+        // A machine that will not say what is in its temporary directory keeps what is there.
+        return;
+    }
+    const byAge = held
+        .map((one) => path.join(inside, one))
+        .map((one) => ({ one, at: madeAt(one) }))
+        .filter((held_) => held_.at > 0)
+        .sort((left, right) => right.at - left.at);
+    for (const { one } of byAge.slice(keptRuns)) {
+        try {
+            fs.rmSync(one, { recursive: true, force: true });
+        }
+        catch {
+            // A directory another run is still writing into is left where it is.
+        }
+    }
+}
+
+// When one work directory was made, or nothing when it cannot be told.
+function madeAt(where: string): number {
+    try {
+        return fs.statSync(where).mtimeMs;
+    }
+    catch {
+        return 0;
+    }
+}
+
 // Makes a directory for this run outside the repository, so a run writes nothing into the tree it
 // is measuring.
 export function makeWorkDirectory(root: string): string {
+    removeOldRuns();
     const stamp = `${path.basename(root)}-${process.pid}-${Date.now().toString(36)}`;
     const work = fs.mkdtempSync(path.join(os.tmpdir(), `faultline-${stamp}-`));
     const modules = path.join(root, "node_modules");

@@ -119,7 +119,10 @@ export function createServer(handler?: (socket: Socket) => void): Server {
     return made;
 }
 
+// The name a caller building a connection by hand uses. It is the same thing as a socket.
+export { Socket as Stream };
+
 export { Server, Socket };
 
 // What `import net from "node:net"` gets.
-export default { createConnection, connect, createServer, Server, Socket };
+export default { createConnection, connect, createServer, Server, Socket, Stream: Socket };

@@ -8,12 +8,17 @@
 // own.
 
 import real from "node:fs";
+import { Readable, Writable } from "node:stream";
 import { nowRunning } from "../current.ts";
 import type { RunFiles } from "../effects.ts";
 
 // Everything the real module has and this one does not replace. A name a project imports and this
 // file does not hand out would stop the import outright, and a name declared here wins over the
 // one the star brings in.
+//
+// The star brings in the real thing, so every one of its calls that reaches the disk is replaced
+// below whether or not this file does anything useful with it. A run makes up the path it passes,
+// and the real `rmdirSync` given a made up path would take a directory off the machine.
 export * from "node:fs";
 
 // The tree of the run in flight, or nothing when the tool itself is reading.
@@ -256,10 +261,170 @@ export const promises = {
 
 export { Stats };
 
+
+// The calls that reach the disk and are not answered above. Each one is stopped rather than left as
+// the real thing: the run makes up the path a call is given, and none of these may reach the
+// machine. A caller gets the answer a call that did nothing gives, and the code after it runs.
+export function chownSync(): void {}
+export function chmodSync(): void {}
+export function closeSync(): void {}
+export function cpSync(): void {}
+export function fchownSync(): void {}
+export function fchmodSync(): void {}
+export function fdatasyncSync(): void {}
+export function fsyncSync(): void {}
+export function ftruncateSync(): void {}
+export function futimesSync(): void {}
+export function lchownSync(): void {}
+export function linkSync(): void {}
+export function lutimesSync(): void {}
+export function rmdirSync(): void {}
+export function symlinkSync(): void {}
+export function truncateSync(): void {}
+export function utimesSync(): void {}
+export function unwatchFile(): void {}
+export function writeSync(): number {
+    return 0;
+}
+export function writevSync(): number {
+    return 0;
+}
+export function readSync(): number {
+    return 0;
+}
+export function readvSync(): number {
+    return 0;
+}
+export function openSync(): number {
+    // A number no real handle has, so a caller holding it reaches nothing.
+    return 0;
+}
+export function mkdtempSync(prefix: string): string {
+    return `${prefix}made-up`;
+}
+export function realpathSync(path: string): string {
+    return path;
+}
+export function readlinkSync(path: string): string {
+    return path;
+}
+export function globSync(): string[] {
+    return [];
+}
+export function statfsSync(): { bsize: number; blocks: number; bfree: number } {
+    return { bsize: 4096, blocks: 1024, bfree: 512 };
+}
+export function fstatSync(): Stats {
+    return new Stats({ isFile: true, isDirectory: false, size: 0 });
+}
+// The same calls written the way a caller that hands in a callback writes them.
+export const chown = withNothing;
+export const chmod = withNothing;
+export const close = withNothing;
+export const cp = withNothing;
+export const fchown = withNothing;
+export const fchmod = withNothing;
+export const fdatasync = withNothing;
+export const fsync = withNothing;
+export const ftruncate = withNothing;
+export const futimes = withNothing;
+export const lchown = withNothing;
+export const link = withNothing;
+export const lutimes = withNothing;
+export const rmdir = withNothing;
+export const symlink = withNothing;
+export const truncate = withNothing;
+export const utimes = withNothing;
+export const write = withNothing;
+export const writev = withNothing;
+export const read = withNothing;
+export const readv = withNothing;
+export const open = withNothing;
+export const mkdtemp = withNothing;
+export const realpath = withNothing;
+export const readlink = withNothing;
+export const glob = withNothing;
+export const statfs = withNothing;
+export const fstat = withNothing;
+export const lstat = withNothing;
+export const watch = withNothing;
+export const watchFile = withNothing;
+export const opendir = withNothing;
+export const openAsBlob = withNothing;
+
+// The old way of asking whether a path is there, which hands the answer to a callback and takes no
+// error. Every path the run is asked about is there unless the injector says otherwise.
+export function exists(path: string, done: unknown): void {
+    const answer = existsSync(path);
+    if (typeof done === "function") {
+        queueMicrotask(() => (done as (held: boolean) => void)(answer));
+    }
+}
+
+// Tells the last callback a call was given that it worked and there is nothing to report.
+function withNothing(...args: unknown[]): undefined {
+    const done = args[args.length - 1];
+    if (typeof done === "function") {
+        queueMicrotask(() => (done as (error: unknown) => void)(null));
+    }
+    return undefined;
+}
+
+// A directory read as a stream. It holds what the run's own tree holds, so a caller that walks it
+// walks that rather than the machine.
+export function opendirSync(path: string): { read: () => null; close: () => void; [Symbol.asyncIterator]: () => AsyncIterator<never> } {
+    void path;
+    return {
+        read: () => null,
+        close: () => undefined,
+        [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true, value: undefined as never }) }),
+    };
+}
+
+// A file read or written as a stream. Neither reaches the disk: one hands over what the run's tree
+// holds and ends, and the other takes everything and keeps it in the tree.
+export function createReadStream(path: string): Readable {
+    const tree = nowRunning()?.files;
+    if (tree === undefined) {
+        return real.createReadStream(path) as unknown as Readable;
+    }
+    let held = "";
+    try {
+        held = tree.readNow(path);
+    }
+    catch {
+        // A read the injector failed gives an empty stream rather than one that never ends.
+    }
+    return Readable.from([held]);
+}
+
+export function createWriteStream(path: string): Writable {
+    const tree = nowRunning()?.files;
+    if (tree === undefined) {
+        return real.createWriteStream(path) as unknown as Writable;
+    }
+    let held = "";
+    return new Writable({
+        write(piece: unknown, _encoding: unknown, done: (error?: Error) => void) {
+            held += asText(piece);
+            tree.writeNow(path, held);
+            done();
+        },
+    });
+}
+
 // What `import fs from "node:fs"` gets.
 export default {
     readFileSync, writeFileSync, appendFileSync, existsSync, readdirSync, mkdirSync, unlinkSync, rmSync,
     renameSync, copyFileSync, statSync, lstatSync, accessSync,
     readFile, writeFile, appendFile, readdir, mkdir, unlink, rm, rename, copyFile, stat, access,
+    chownSync, chmodSync, closeSync, cpSync, fchownSync, fchmodSync, fdatasyncSync, fsyncSync,
+    ftruncateSync, futimesSync, lchownSync, linkSync, lutimesSync, rmdirSync, symlinkSync,
+    truncateSync, utimesSync, unwatchFile, writeSync, writevSync, readSync, readvSync, openSync,
+    mkdtempSync, realpathSync, readlinkSync, globSync, statfsSync, fstatSync, opendirSync,
+    chown, chmod, close, cp, fchown, fchmod, fdatasync, fsync, ftruncate, futimes, lchown, link,
+    lutimes, rmdir, symlink, truncate, utimes, write, writev, read, readv, open, mkdtemp, realpath,
+    readlink, glob, statfs, fstat, lstat, watch, watchFile, opendir, openAsBlob,
+    createReadStream, createWriteStream, exists,
     promises, Stats,
 };

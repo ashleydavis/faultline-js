@@ -26,10 +26,25 @@ test("a read with no encoding asked for comes back as bytes", async () => {
     assert.ok(held instanceof Buffer);
 });
 
-test("a file that is not there fails the way the runtime fails", async () => {
-    await whileRunning(async () => {
-        assert.throws(() => files.readFileSync("/missing.txt", "utf8"), (thrown: { code?: string }) => thrown.code === "ENOENT");
-    });
+test("a path the run was never told about is there and holds something", async () => {
+    // Which made up string a call was given is an accident, and whether a read fails is the
+    // injector's to decide. A tree where only two paths existed failed almost every read, so the
+    // code that does something with what it read almost never ran.
+    const text = await whileRunning(() => files.readFileSync("/never-mentioned.json", "utf8"));
+    assert.equal(typeof text, "string");
+    assert.ok((text as string).length > 0);
+});
+
+test("a read the injector fails says so with the code a missing file has", async () => {
+    const subject = new RunSubject(3, "clean");
+    subject.injector.fail("files", "missing");
+    const before = runWith(subject);
+    try {
+        assert.throws(() => files.readFileSync("/settings.json", "utf8"), (thrown: { code?: string }) => thrown.code === "ENOENT");
+    }
+    finally {
+        runWith(before);
+    }
 });
 
 test("what a run writes is what it reads back", async () => {
@@ -55,17 +70,16 @@ test("an append adds to the end of what was there", async () => {
     });
 });
 
-test("a file taken away is no longer there", async () => {
+test("a file taken away no longer holds what it held", async () => {
     await whileRunning(async () => {
+        const before = files.readFileSync("/notes.txt", "utf8");
         files.unlinkSync("/notes.txt");
-        assert.equal(files.existsSync("/notes.txt"), false);
+        assert.notEqual(files.readFileSync("/notes.txt", "utf8"), before);
     });
 });
 
-test("taking away a file that is not there fails the way the runtime fails", async () => {
-    await whileRunning(async () => {
-        assert.throws(() => files.unlinkSync("/missing.txt"), (thrown: { code?: string }) => thrown.code === "ENOENT");
-    });
+test("every path the run is asked about is there unless the injector says otherwise", async () => {
+    assert.equal(await whileRunning(() => files.existsSync("/anything-at-all")), true);
 });
 
 test("a stat says whether the path is a file or a directory", async () => {
@@ -80,7 +94,7 @@ test("a renamed file keeps what was in it and leaves its old path empty", async 
     await whileRunning(async () => {
         files.renameSync("/notes.txt", "/moved.txt");
         assert.equal(files.readFileSync("/moved.txt", "utf8").toString().startsWith("The first line."), true);
-        assert.equal(files.existsSync("/notes.txt"), false);
+        assert.equal(files.readFileSync("/notes.txt", "utf8").toString().startsWith("The first line."), false);
     });
 });
 
@@ -115,11 +129,18 @@ test("a callback given no options is still the callback", async () => {
     assert.ok(held instanceof Buffer);
 });
 
-test("a callback is told about a file that is not there rather than throwing", async () => {
-    const thrown = await whileRunning(
-        async () => new Promise<{ code?: string }>((settle) => files.readFile("/missing.txt", "utf8", (error: unknown) => settle(error as { code?: string }))),
-    );
-    assert.equal(thrown.code, "ENOENT");
+test("a callback is told about a read the injector failed rather than the read throwing", async () => {
+    const subject = new RunSubject(3, "clean");
+    subject.injector.fail("files", "denied");
+    const before = runWith(subject);
+    try {
+        const thrown = await new Promise<{ code?: string }>((settle) =>
+            files.readFile("/settings.json", "utf8", (error: unknown) => settle(error as { code?: string })));
+        assert.equal(thrown.code, "EACCES");
+    }
+    finally {
+        runWith(before);
+    }
 });
 
 test("the promise half reads and writes the same tree the rest does", async () => {
@@ -132,4 +153,8 @@ test("the promise half reads and writes the same tree the rest does", async () =
 
 test("a run that has not started reads the machine's own disk", async () => {
     assert.equal(files.existsSync("/settings.json"), false);
+});
+
+test("a read the injector did not fail says the path is there", async () => {
+    assert.equal(await whileRunning(() => files.existsSync("/anything-at-all")), true);
 });

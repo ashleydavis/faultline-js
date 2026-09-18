@@ -150,6 +150,21 @@ export function spawn(command: string): ChildProcess {
     return new ChildProcess(outcomeFor(command));
 }
 
+// Starts another copy of the runtime. It starts none: the real one would start a process per call,
+// and a run makes hundreds. It answers the way a started one does and takes messages that go
+// nowhere.
+export function fork(module: string): ChildProcess {
+    const child = new ChildProcess(outcomeFor(module)) as ChildProcess & {
+        send: (message: unknown) => boolean;
+        connected: boolean;
+        disconnect: () => void;
+    };
+    child.send = () => true;
+    child.connected = true;
+    child.disconnect = () => undefined;
+    return child;
+}
+
 export function spawnSync(command: string): { status: number; stdout: string; stderr: string; error?: Error } {
     const outcome = outcomeFor(command);
     return { status: outcome.status, stdout: outcome.out, stderr: outcome.err, error: outcome.error };
@@ -158,4 +173,4 @@ export function spawnSync(command: string): { status: number; stdout: string; st
 export { ChildProcess };
 
 // What `import child from "node:child_process"` gets.
-export default { exec, execFile, execSync, execFileSync, spawn, spawnSync, ChildProcess };
+export default { exec, execFile, execSync, execFileSync, fork, spawn, spawnSync, ChildProcess };

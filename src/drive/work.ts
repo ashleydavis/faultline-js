@@ -312,6 +312,7 @@ async function explore(
     let stepped = 0;
 
     const watching = new RunSubject(unit.seed, "recording", model.work);
+    watching.files.holds(file.properties, file.tests);
     try {
         await callOnce(new ValueMaker(watching, factories, 0, file), module, held, file.classes);
         calls += 1;
@@ -341,6 +342,7 @@ async function explore(
                 break combinations;
             }
             const subject = new RunSubject(unit.seed, "exploring", model.work);
+            subject.files.holds(file.properties, file.tests, at);
             subject.injector.explore(place, failure);
             try {
                 const answer = await callOnce(new ValueMaker(subject, factories, at, file), module, held, file.classes);
@@ -378,6 +380,15 @@ function addPlaces(places: string[], recorded: Point[]): void {
         .sort((left, right) => left.occurrence - right.occurrence || left.order - right.order);
     for (const one of found) {
         places.push(one.name);
+    }
+}
+
+// Says what a file the run was never told about holds, built from what the file being measured
+// reads off its values. Code that parses a settings file and reads a field off it finds that field.
+function tellTheFiles(subject: RunSubject, model: RunModel, unit: Unit): void {
+    const file = unit.file === undefined ? undefined : model.files[unit.file];
+    if (file !== undefined) {
+        subject.files.holds(file.properties, file.tests);
     }
 }
 
@@ -424,6 +435,7 @@ async function stillToRun(runtime: Runtime, file: FileModel, wanted: PathSite[])
 // would bury it.
 export async function runUnit(runtime: Runtime, model: RunModel, unit: Unit, factories: CallableFactory[]): Promise<boolean> {
     const subject = new RunSubject(unit.seed, unit.faulting ? "faulting" : "clean");
+    tellTheFiles(subject, model, unit);
 
     if (unit.kind === "scenario") {
         const scenario = model.scenarios[unit.scenario!]!;
@@ -501,6 +513,7 @@ export async function runUnit(runtime: Runtime, model: RunModel, unit: Unit, fac
             }
         }
         try {
+            subject.files.holds(file.properties, file.tests, round);
             const maker = new ValueMaker(subject, factories, round, file);
             const answer = await callOnce(maker, module, held, file.classes);
             const missing = maker.stoodIn[0];

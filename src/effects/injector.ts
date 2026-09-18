@@ -12,7 +12,7 @@ import { callSite } from "./site.ts";
 // plan naming a failure is either understood or refused.
 export const failuresByEffect: Record<EffectName, string[]> = {
     net: ["refused", "timeout", "dns", "server-error", "bad-body"],
-    files: ["missing", "denied", "io", "is-directory", "full"],
+    files: ["missing", "denied", "io", "is-directory", "full", "unreadable"],
     writer: ["short", "closed", "broken-pipe"],
     clock: ["backwards", "jump"],
     rng: [],
