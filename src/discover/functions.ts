@@ -3,7 +3,7 @@
 
 import ts from "typescript";
 import { exportedAs } from "../build/emit.ts";
-import { functionLabel, isReportedFunction, type FunctionNode } from "./names.ts";
+import { functionLabel, isFunctionNode, isReportedFunction, type FunctionNode } from "./names.ts";
 import { recipeFor, typeKeyOf, type Recipe, type RecipeContext } from "./recipes.ts";
 import { toPosix } from "./sources.ts";
 
@@ -41,6 +41,11 @@ export interface FunctionInfo {
 
     // How the driver reaches it, or why it cannot.
     reach: Reach;
+
+    // The function it is written inside, as the report labels that one, for a function written
+    // inside another. Its paths belong to that function's unit, because the call that runs them is
+    // the one the function around it makes.
+    within?: string;
 
     // Its parameters, in order.
     parameters: ParameterInfo[];
@@ -193,6 +198,7 @@ function readFunction(
         file,
         line,
         reach: reachOf(node, exportNames),
+        within: withinName(node),
         parameters: node.parameters.map((parameter) => readParameter(context, parameter)),
         async: returnsPromise(checker, node),
         returnKey: returnKeyOf(context, node),
@@ -384,6 +390,22 @@ function keptName(node: FunctionNode): string | undefined {
         ts.isSourceFile(parent.parent.parent.parent)
     ) {
         return parent.name.text;
+    }
+    return undefined;
+}
+
+// The function one function is written inside, as the report labels it, or nothing for one written
+// at the top of the file.
+//
+// A function written inside another is reached only by the one around it, so its paths belong to
+// that function's unit and are what say whether that unit has more to try.
+function withinName(node: FunctionNode): string | undefined {
+    let held = node.parent as ts.Node | undefined;
+    while (held !== undefined && !ts.isSourceFile(held)) {
+        if (isFunctionNode(held) && isReportedFunction(held)) {
+            return functionLabel(held);
+        }
+        held = held.parent as ts.Node | undefined;
     }
     return undefined;
 }

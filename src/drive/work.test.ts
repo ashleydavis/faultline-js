@@ -115,3 +115,22 @@ test("a path an earlier round reached is not one the exploring waits for", async
     assert.equal(await runUnit(runtime, model, unit, []), true);
     assert.equal(calls[0], 1);
 });
+
+test("a unit is after the paths of the functions written inside the one it calls", () => {
+    const inner: FunctionInfo = {
+        label: "inner", file: "reads.ts", line: 3, async: false, parameters: [],
+        reach: { how: "inside", because: "it is written inside another function, so only that function reaches it" },
+        within: "readAll",
+    };
+    const withInner: FileModel = {
+        ...file,
+        functions: [held, inner],
+        paths: [...file.paths, { name: "if:4:true", describe: "the true side", file: "reads.ts", line: 4, fn: "inner", at: { line: 4, column: 8 } }],
+    };
+    // Every path of readAll has run and the one inside inner has not, so the unit keeps trying.
+    const { runtime, calls } = runtimeFor(async () => new Set(["readAll:entered", "catch:11"]));
+    const one = { ...model, files: [withInner] };
+    return runUnit(runtime, one, unit, []).then(() => {
+        assert.ok(calls[0]! > 1, `stopped after ${String(calls[0])} calls`);
+    });
+});

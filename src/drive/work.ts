@@ -188,9 +188,7 @@ async function callWhileRunning(
     const args = argumentsFor(maker, held.parameters);
     try {
         const answer = target(...args);
-        if (answer instanceof Promise) {
-            await answer;
-        }
+        await callWhatCameBack(maker, answer instanceof Promise ? await answer : answer);
         return "called";
     }
     catch {
@@ -199,6 +197,57 @@ async function callWhileRunning(
         return "stepped";
     }
 }
+
+// How far into what a call handed back the run goes looking for more to call. One step reaches a
+// function a call returned and the methods of an object it returned, and a second would be walking
+// a whole graph for what it might hold.
+const deepestAnswer = 1;
+
+// Calls what a call handed back, when what it handed back is something to call.
+//
+// A function written inside another function is reached no other way. It reads what the function
+// around it had, so no export gets at it and the only call it ever takes is the one the function
+// around it hands out. A run that threw the answer away never reached a line of it.
+async function callWhatCameBack(maker: ValueMaker, answer: unknown, depth = 0): Promise<void> {
+    if (depth > deepestAnswer) {
+        return;
+    }
+    if (typeof answer === "function") {
+        try {
+            const held = (answer as (...args: unknown[]) => unknown)(...madeUpFor(maker, answer.length));
+            if (held instanceof Promise) {
+                await held;
+            }
+        }
+        catch {
+            // The same as any other call that throws on an input it was never written for.
+        }
+        return;
+    }
+    if (answer === null || typeof answer !== "object" || Array.isArray(answer)) {
+        return;
+    }
+    for (const held of Object.values(answer as Record<string, unknown>)) {
+        if (typeof held === "function") {
+            await callWhatCameBack(maker, held, depth + 1);
+        }
+    }
+}
+
+// Arguments for a function the run only knows the arity of. There is no declaration to read a type
+// off, so each one is a value worth trying and the turns work through the lists as they do
+// everywhere else.
+function madeUpFor(maker: ValueMaker, arity: number): unknown[] {
+    const out: unknown[] = [];
+    for (let at = 0; at < Math.min(arity, mostArguments); at += 1) {
+        out.push(maker.make({ kind: "any" }));
+    }
+    return out;
+}
+
+// How many arguments the run makes up for a function it has no declaration for. A function taking
+// more than eight is rare, and one declaring a hundred would cost a hundred values per call.
+const mostArguments = 8;
 
 // What a module hands out under one name. A name with a dot in it is a declaration the file kept to
 // itself, which the copy hands out on one holder rather than as an export of its own.
@@ -279,7 +328,7 @@ async function explore(
 
     // The paths of this function an earlier round has yet to reach. They are what the exploring is
     // for, so reaching all of them is what finishes it.
-    const wanted = file.paths.filter((one) => one.fn === held.label && !runtime.ticked.has(`${one.file}:${one.name}`));
+    const wanted = stillWanted(runtime, file, held);
 
     combinations: for (let at = 0; at < places.length; at += 1) {
         const place = places[at]!;
@@ -330,6 +379,28 @@ function addPlaces(places: string[], recorded: Point[]): void {
     for (const one of found) {
         places.push(one.name);
     }
+}
+
+// The paths one unit is after: this function's, and those of every function written inside it,
+// less the ones an earlier round already reached.
+//
+// A function written inside another is run by the call to the one around it, so its paths are what
+// say whether that unit still has something to try. Counting only the outer function's paths stops
+// a unit the moment the outer function is covered, and the inner one is left with whatever the
+// first turn happened to reach.
+function stillWanted(runtime: Runtime, file: FileModel, held: FunctionInfo): PathSite[] {
+    const mine = new Set([held.label]);
+    let grew = true;
+    while (grew) {
+        grew = false;
+        for (const one of file.functions) {
+            if (one.within !== undefined && mine.has(one.within) && !mine.has(one.label)) {
+                mine.add(one.label);
+                grew = true;
+            }
+        }
+    }
+    return file.paths.filter((one) => mine.has(one.fn) && !runtime.ticked.has(`${one.file}:${one.name}`));
 }
 
 // Whether every path the exploring is after has run. A runtime that cannot read what has run while
@@ -394,7 +465,7 @@ export async function runUnit(runtime: Runtime, model: RunModel, unit: Unit, fac
 
     // Every path of this function that is still to be reached. Once they have all run there is no
     // reason to keep trying values.
-    const wanted = file.paths.filter((one) => one.fn === held.label && !runtime.ticked.has(`${one.file}:${one.name}`));
+    const wanted = stillWanted(runtime, file, held);
 
     for (let round = 0; round < callsPerUnit; round += 1) {
         if (round > 0 && (await allRan(runtime, file, wanted))) {

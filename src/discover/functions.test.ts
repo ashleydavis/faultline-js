@@ -171,3 +171,18 @@ test("a file with no function in it reads as having none", () => {
     const facts = read("export const a = 1;\nexport interface B { x: number }");
     assert.deepEqual(facts.functions, []);
 });
+
+test("a function written inside another says which one it is inside", () => {
+    const facts = read("export function outer() { function inner() {} return inner; }");
+    assert.equal(facts.functions.find((one) => one.label === "inner")?.within, "outer");
+});
+
+test("a function at the top of a file is inside no other", () => {
+    const facts = read("export function alone() {}");
+    assert.equal(facts.functions[0]?.within, undefined);
+});
+
+test("a function two deep names the one directly around it", () => {
+    const facts = read("export function outer() { function middle() { function inner() {} return inner; } return middle; }");
+    assert.equal(facts.functions.find((one) => one.label === "inner")?.within, "middle");
+});
