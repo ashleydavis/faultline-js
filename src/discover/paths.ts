@@ -129,6 +129,9 @@ export function pathsIn(source: ts.SourceFile, file: string): Paths {
         if (ts.isCatchClause(node)) {
             addPath(node, `catch:${lineOf(node)}`, "the catch", here, bodyPlace(node.block));
         }
+        if (isOptionalChain(node)) {
+            readChain(node, here);
+        }
         ts.forEachChild(node, (child) => {
             walk(child, here);
         });
@@ -192,6 +195,29 @@ export function pathsIn(source: ts.SourceFile, file: string): Paths {
         addPath(node, `logic:${line}:${operator}:short`, `the short circuit of \`${operator}\``, here, placeOf(node), right);
     }
 
+    // Reads both sides of `?.`: the read that happened, and the one skipped because what was on the
+    // left was nothing.
+    //
+    // It is counted the way `&&` is. The part after the `?.` ran when what was on the left was
+    // something, and the skipped side is that count taken from the count of the whole expression.
+    // Inside a loop's own condition there is no count to take it from, for the reason above.
+    function readChain(node: ts.Node, here: string): void {
+        const line = lineOf(node);
+        const past = pastTheQuestion(node);
+        if (past === undefined) {
+            return;
+        }
+        // The column is in the name as well as the line, because `a?.b?.c` is two of these on one
+        // line and two paths sharing a name are one path to everything that reads them.
+        const where = `${line}:${placeOf(past).column}`;
+        addPath(past, `chain:${where}:read`, "the read past `?.`", here, placeOf(past));
+        if (inLoopCondition(node)) {
+            unseen.push({ file, line, fn: here, describe: "the skipped read at `?.`" });
+            return;
+        }
+        addPath(node, `chain:${where}:skipped`, "the read skipped at `?.`", here, placeOf(node), placeOf(past));
+    }
+
     // Reads every arm of a switch that has a statement to point at.
     function readSwitch(node: ts.SwitchStatement, here: string): void {
         for (const clause of node.caseBlock.clauses) {
@@ -238,6 +264,32 @@ export function inLoopCondition(node: ts.Node): boolean {
     }
     return false;
 }
+
+// Whether a node reads through `?.`, which is a branch: what was on the left is something, or it is
+// nothing and everything after the `?.` is skipped.
+export function isOptionalChain(node: ts.Node): boolean {
+    if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node) || ts.isCallExpression(node)) {
+        return node.questionDotToken !== undefined;
+    }
+    return false;
+}
+
+// What sits past the `?.`, which is the part that runs only when what was on the left was
+// something. It is the property for a read, the index for a lookup and the first argument for a
+// call, and nothing for a call written with no arguments, which has no place of its own to count.
+export function pastTheQuestion(node: ts.Node): ts.Node | undefined {
+    if (ts.isPropertyAccessExpression(node)) {
+        return node.name;
+    }
+    if (ts.isElementAccessExpression(node)) {
+        return node.argumentExpression;
+    }
+    if (ts.isCallExpression(node)) {
+        return node.arguments[0];
+    }
+    return undefined;
+}
+
 
 // Whether this operator only evaluates its right side sometimes.
 function shortCircuits(kind: ts.SyntaxKind): boolean {

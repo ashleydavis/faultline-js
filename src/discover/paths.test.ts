@@ -13,6 +13,11 @@ function names(text: string): string[] {
     return read(text).map((one) => one.name);
 }
 
+// Everything one piece of text holds, the branches V8 reports no count for included.
+function whole(text: string): { paths: PathSite[]; unseen: { describe: string }[] } {
+    return pathsIn(parse(text), "example.ts");
+}
+
 test("a function with no branch has one path, its body", () => {
     assert.deepEqual(names("export function f() { return 1; }"), ["f:entered"]);
 });
@@ -163,3 +168,35 @@ test("every path names the file it was found in", () => {
     }
 });
 
+
+test("a read through `?.` is two paths: the read and the one skipped", () => {
+    const text = "export function f(x: { a?: string }) { return x?.a; }";
+    assert.ok(names(text).some((one) => one.endsWith(":read")), names(text).join(","));
+    assert.ok(names(text).some((one) => one.endsWith(":skipped")), names(text).join(","));
+});
+
+test("the read skipped at `?.` is counted against the expression being reached", () => {
+    const skipped = read("export function f(x: { a?: string }) { return x?.a; }").find((one) => one.name.endsWith(":skipped"));
+    assert.notEqual(skipped?.against, undefined);
+});
+
+test("two reads through `?.` on one line are two paths, not one", () => {
+    const found = read("export function f(x: { a?: { b?: string } }) { return x?.a?.b; }");
+    assert.equal(new Set(found.filter((one) => one.name.startsWith("chain:")).map((one) => one.name)).size, 4);
+});
+
+test("a call made through `?.` is counted the same way", () => {
+    const text = "export function f(x: { go?: (n: number) => void }) { x?.go?.(1); }";
+    assert.ok(names(text).some((one) => one.startsWith("chain:")), names(text).join(","));
+});
+
+test("a lookup made through `?.` is counted the same way", () => {
+    const text = "export function f(x: string[] | undefined, at: number) { return x?.[at]; }";
+    assert.ok(names(text).some((one) => one.startsWith("chain:")), names(text).join(","));
+});
+
+test("a read through `?.` in a loop's own condition is left out and said to be", () => {
+    const found = whole("export function f(x: { a?: string } | undefined) { while (x?.a !== undefined) { break; } }");
+    assert.equal(found.paths.some((one) => one.name.endsWith(":skipped")), false);
+    assert.ok(found.unseen.some((one) => one.describe.includes("?.")), JSON.stringify(found.unseen));
+});

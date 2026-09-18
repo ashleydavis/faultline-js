@@ -98,8 +98,6 @@ Everything else buys precision rather than entry, and a project that writes none
 
 ## What flt does not count
 
-Optional chaining. `a?.b` is a branch, and flt does not report it. Counting it asks for a scenario on every property read that might be missing, which buries the list the run exists to produce.
-
 A `try` whose body throws every time. Every byte of such a function runs, so V8 reports it as covered, and it is. A scenario or an invariant is what says the other way has to happen.
 
 The skipped side of `&&`, `||` or `??` inside a loop's own condition. A condition tested once per turn sits in the block around the loop, so there is no count to take it from. The report says how many there are.
