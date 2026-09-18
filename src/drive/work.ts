@@ -328,7 +328,6 @@ async function allRan(runtime: Runtime, file: FileModel, wanted: PathSite[]): Pr
 // would bury it.
 export async function runUnit(runtime: Runtime, model: RunModel, unit: Unit, factories: CallableFactory[]): Promise<boolean> {
     const subject = new RunSubject(unit.seed, unit.faulting ? "faulting" : "clean");
-    const maker = new ValueMaker(subject, factories);
 
     if (unit.kind === "scenario") {
         const scenario = model.scenarios[unit.scenario!]!;
@@ -374,9 +373,16 @@ export async function runUnit(runtime: Runtime, model: RunModel, unit: Unit, fac
     let stepped = 0;
     let cannotBuild: { parameter: string; typeText: string } | undefined;
 
+    // Every path of this function that is still to be reached. Once they have all run there is no
+    // reason to keep trying values.
+    const wanted = file.paths.filter((one) => one.fn === held.label && !runtime.ticked.has(`${one.file}:${one.name}`));
+
     for (let round = 0; round < callsPerUnit; round += 1) {
+        if (round > 0 && (await allRan(runtime, file, wanted))) {
+            break;
+        }
         try {
-            const answer = await callOnce(maker, module, held, file.classes);
+            const answer = await callOnce(new ValueMaker(subject, factories, round), module, held, file.classes);
             if (answer === "called") {
                 calls += 1;
             }

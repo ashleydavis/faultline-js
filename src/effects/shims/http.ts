@@ -13,6 +13,11 @@ import { Readable } from "node:stream";
 import { nowRunning } from "../current.ts";
 import { CodedError } from "../effects.ts";
 
+// Everything the real module has and this one does not replace. A name a project imports and this
+// file does not hand out would stop the import outright, and a name declared here wins over the
+// one the star brings in.
+export * from "node:http";
+
 // The body a working request answers with. It parses as JSON and reads as text, so a caller that
 // does either gets something it understands.
 const answersWith = '{"ok":true}';

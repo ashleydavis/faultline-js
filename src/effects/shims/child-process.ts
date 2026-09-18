@@ -10,6 +10,11 @@ import { Readable } from "node:stream";
 import { nowRunning } from "../current.ts";
 import { CodedError } from "../effects.ts";
 
+// Everything the real module has and this one does not replace. A name a project imports and this
+// file does not hand out would stop the import outright, and a name declared here wins over the
+// one the star brings in.
+export * from "node:child_process";
+
 // What a program that worked printed. It is a line, because that is what code under test reads and
 // trims.
 const printed = "ok\n";
@@ -86,7 +91,9 @@ export function exec(command: string, options?: unknown, callback?: unknown): Ch
     const outcome = outcomeFor(command);
     const child = new ChildProcess(outcome);
     queueMicrotask(() => {
-        if (done === undefined) {
+        // A caller that passed something other than a function where the callback goes gets no
+        // answer, the same as one that passed none.
+        if (typeof done !== "function") {
             return;
         }
         if (outcome.error !== undefined) {

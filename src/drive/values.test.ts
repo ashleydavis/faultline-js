@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { RunSubject } from "../effects/subject.ts";
 import type { Recipe } from "../discover/recipes.ts";
-import { CannotBuild, interestingNumbers, interestingStrings, ValueMaker } from "./values.ts";
+import { CannotBuild, interestingNumbers, interestingStrings, mostTurns, ValueMaker } from "./values.ts";
 
 // A maker wired to one seed, with the factories a test hands it.
 function maker(seed = 1, factories: ConstructorParameters<typeof ValueMaker>[1] = []): ValueMaker {
@@ -293,4 +293,40 @@ test("a recipe that goes on for ever stops rather than filling the stack", () =>
 test("two makers on one seed build the same values", () => {
     const recipe: Recipe = { kind: "array", element: { kind: "string" } };
     assert.deepEqual(many(recipe, 50, 8), many(recipe, 50, 8));
+});
+
+test("a list of values worth trying is walked rather than drawn from", () => {
+    // One turn hands out the entries in order, so one call's several arguments differ.
+    const one = new ValueMaker(new RunSubject(1, "clean"), [], 0);
+    const drawn = [0, 1, 2].map(() => one.make({ kind: "string" }));
+    assert.deepEqual(drawn, interestingStrings.slice(0, 3));
+});
+
+test("the next turn moves every value on by one", () => {
+    const next = new ValueMaker(new RunSubject(1, "clean"), [], 1);
+    assert.equal(next.make({ kind: "string" }), interestingStrings[1]);
+    assert.equal(next.make({ kind: "string" }), interestingStrings[2]);
+});
+
+test("the turns together try every value worth trying", () => {
+    const seen = new Set<unknown>();
+    for (let turn = 0; turn < mostTurns; turn += 1) {
+        seen.add(new ValueMaker(new RunSubject(1, "clean"), [], turn).make({ kind: "string" }));
+    }
+    assert.equal(seen.size, interestingStrings.length);
+});
+
+test("a turn past the end of a list comes back round to its start", () => {
+    const round = new ValueMaker(new RunSubject(1, "clean"), [], interestingStrings.length);
+    assert.equal(round.make({ kind: "string" }), interestingStrings[0]);
+});
+
+test("every number worth trying is tried across the turns", () => {
+    // Compared in order rather than as a set, because zero and minus zero are one entry to a set
+    // and two numbers to the code under test.
+    const seen: unknown[] = [];
+    for (let turn = 0; turn < interestingNumbers.length; turn += 1) {
+        seen.push(new ValueMaker(new RunSubject(1, "clean"), [], turn).make({ kind: "number" }));
+    }
+    assert.deepEqual(seen, interestingNumbers);
 });

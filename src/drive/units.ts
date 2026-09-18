@@ -3,11 +3,13 @@
 
 import type { RunModel } from "../model.ts";
 import type { Unit } from "./protocol.ts";
+import { mostTurns } from "./values.ts";
 
-// How many calls one unit makes. Four is used because a single call per seed leaves too much of a
-// function's inputs untried, and more than a handful makes a unit long enough that a restart after
-// a hang throws away work worth keeping.
-export const callsPerUnit = 4;
+// How many calls one unit makes at most. It is a turn per entry of the longest list of values worth
+// trying, so every one of them is tried rather than the ones a draw landed on. A unit stops as soon
+// as every path in the function has run, so a function whose paths are reached on the first turn
+// costs one call rather than all of them.
+export const callsPerUnit = mostTurns;
 
 // Builds the work for a later round: one unit per function that still has a path nothing reached.
 export function buildExploration(model: RunModel, unreached: Set<string>, seed: number): Unit[] {

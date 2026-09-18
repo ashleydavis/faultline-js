@@ -7,6 +7,11 @@ import { EventEmitter } from "node:events";
 import { nowRunning } from "../current.ts";
 import { CodedError } from "../effects.ts";
 
+// Everything the real module has and this one does not replace. A name a project imports and this
+// file does not hand out would stop the import outright, and a name declared here wins over the
+// one the star brings in.
+export * from "node:net";
+
 // One connection, as `node:net` hands it back. What is written to it goes nowhere, and what it
 // answers with is what the injector said.
 class Socket extends EventEmitter {

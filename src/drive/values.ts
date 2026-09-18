@@ -19,13 +19,6 @@ export class CannotBuild extends Error {
     }
 }
 
-// How many of a list's first entries are drawn half the time.
-//
-// A list of values worth trying is written with the ones most code turns on at the front: the empty
-// string, zero, one. Drawing evenly across the whole list leaves those to luck, and a branch on
-// `x === 0` then goes unreached on a short run about one time in thirty.
-const headOfList = 6;
-
 // The strings a run tries. Each one is here because some piece of code treats it apart from the
 // rest: the empty one, one that is only spaces, one that parses as a number, one that parses as
 // JSON, one with a character outside the basic plane, and one long enough to cross a limit.
@@ -75,6 +68,10 @@ export interface CallableFactory {
     parameters: { recipe: Recipe; optional: boolean; rest: boolean }[];
 }
 
+// How many turns of the calling it takes to walk every list of values worth trying. A unit makes at
+// most this many calls, and stops as soon as every path in the function has run.
+export const mostTurns = Math.max(interestingStrings.length, interestingNumbers.length);
+
 // How deep a built value goes. A recipe is already capped when it is read, and this stops a value
 // built from a recipe that refers to itself through a factory.
 const deepestValue = 8;
@@ -91,7 +88,18 @@ export class ValueMaker {
     // entry.
     private built = 0;
 
-    constructor(subject: RunSubject, factories: CallableFactory[]) {
+    // Which turn of the calling this is. The lists of values worth trying are walked from here
+    // rather than drawn from, so a branch on one particular value is reached by the turn that
+    // reaches it rather than by luck.
+    private readonly turn: number;
+
+    // How many values worth trying have been handed out on this turn. Together with the turn it
+    // says which entry comes next, so one call's several arguments are different values and the
+    // next turn moves all of them on.
+    private handedOut = 0;
+
+    constructor(subject: RunSubject, factories: CallableFactory[], turn = 0) {
+        this.turn = turn;
         this.subject = subject;
         this.factories = new Map();
         for (const one of factories) {
@@ -187,10 +195,12 @@ export class ValueMaker {
         if (supplied.length === 0) {
             return this.make(recipe.structural, depth);
         }
-        const turn = this.built % (supplied.length + 1);
+        // The turn of the calling comes into this as well as how many values this call has already
+        // built, so the next call uses the next factory rather than the same one every time.
+        const at = (this.turn + this.built) % (supplied.length + 1);
         this.built += 1;
-        if (turn < supplied.length) {
-            return supplied[turn]!.make(this);
+        if (at < supplied.length) {
+            return supplied[at]!.make(this);
         }
         try {
             return this.make(recipe.structural, depth);
@@ -276,13 +286,15 @@ export class ValueMaker {
         };
     }
 
-    // Draws from a list of values worth trying, favouring the ones at the front of it.
+    // Takes the next entry of a list of values worth trying.
+    //
+    // The lists are walked rather than drawn from. A list holds every value some piece of code
+    // treats apart from the rest, so walking it reaches a branch on `x === 0` on the turn that
+    // reaches it, where drawing left it to luck and missed it about one short run in thirty.
     private worthTrying<T>(values: readonly T[]): T {
-        const rng = this.subject.rng;
-        if (values.length > headOfList && rng.int(0, 1) === 0) {
-            return values[rng.int(0, headOfList - 1)]!;
-        }
-        return rng.pick(values);
+        const at = this.turn + this.handedOut;
+        this.handedOut += 1;
+        return values[at % values.length]!;
     }
 
     // Sometimes hands back nothing at all in place of a value, whatever the type said.

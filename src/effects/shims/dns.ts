@@ -7,6 +7,11 @@
 import { nowRunning } from "../current.ts";
 import { CodedError } from "../effects.ts";
 
+// Everything the real module has and this one does not replace. A name a project imports and this
+// file does not hand out would stop the import outright, and a name declared here wins over the
+// one the star brings in.
+export * from "node:dns";
+
 // The address every name resolves to when the lookup works. It is the loopback address, because
 // nothing is dialled and a caller that prints what it resolved prints something it recognises.
 const resolvesTo = "127.0.0.1";
@@ -33,6 +38,9 @@ function refuse(name: string, call: string): void {
 
 export function lookup(name: string, options: unknown, callback?: unknown): void {
     const done = (typeof options === "function" ? options : callback) as (error: unknown, address?: string, family?: number) => void;
+    if (typeof done !== "function") {
+        return;
+    }
     try {
         refuse(name, "A");
     }
@@ -45,6 +53,9 @@ export function lookup(name: string, options: unknown, callback?: unknown): void
 
 export function resolve4(name: string, callback: unknown): void {
     const done = callback as (error: unknown, addresses?: string[]) => void;
+    if (typeof done !== "function") {
+        return;
+    }
     try {
         refuse(name, "A");
     }

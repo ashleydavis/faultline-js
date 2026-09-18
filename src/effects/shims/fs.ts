@@ -11,6 +11,11 @@ import real from "node:fs";
 import { nowRunning } from "../current.ts";
 import type { RunFiles } from "../effects.ts";
 
+// Everything the real module has and this one does not replace. A name a project imports and this
+// file does not hand out would stop the import outright, and a name declared here wins over the
+// one the star brings in.
+export * from "node:fs";
+
 // The tree of the run in flight, or nothing when the tool itself is reading.
 function tree(): RunFiles | undefined {
     return nowRunning()?.files;
@@ -163,6 +168,11 @@ export function lstatSync(path: string): Stats {
 // is told from `fs.readFile(path, options, done)`.
 function withCallback<T>(work: () => T, options: unknown, callback: unknown): void {
     const done = (typeof options === "function" ? options : callback) as (error: unknown, answer?: T) => void;
+    // A caller that passed something other than a function where the callback goes gets no answer,
+    // the same as one that passed none.
+    if (typeof done !== "function") {
+        return;
+    }
     let answer: T;
     try {
         answer = work();
