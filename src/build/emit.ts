@@ -51,6 +51,17 @@ export interface EmitOptions {
 // asset. Node loads none of them, and a project built with a bundler imports them freely.
 export const assetStubName = "__faultline-asset.mjs";
 
+// What the copy hands the private declarations of a file out under. A function the file does not
+// export cannot be reached from outside it, and a run that only calls the exported ones reaches a
+// private function through whatever calls it or never. The copy adds one export holding all of
+// them, so your own exports are left exactly as you wrote them.
+export const privateHolder = "__flt";
+
+// How a private declaration is named to the driver, which reads it off the holder.
+export function exportedAs(name: string): string {
+    return `${privateHolder}.${name}`;
+}
+
 // The extensions a runtime can load. Anything else a file imports is an asset.
 const loadable = [".ts", ".tsx", ".mts", ".cts", ".js", ".mjs", ".cjs", ".jsx", ".json", ".node"];
 
@@ -118,9 +129,10 @@ export function emit(options: EmitOptions): Emitted {
         }
         const js = transpile(source.text, source.fileName, options.options);
         const pointed = rewriteSpecifiers(js, target, source.fileName, work, options, modules);
+        const reachable = exportEverything(pointed, target);
         fs.mkdirSync(path.dirname(target), { recursive: true });
-        fs.writeFileSync(target, pointed);
-        written.set(relative, pointed);
+        fs.writeFileSync(target, reachable);
+        written.set(relative, reachable);
     }
 
     return { work, modules, paths, written, unseen };
@@ -152,6 +164,51 @@ export function transpile(text: string, fileName: string, options: ts.CompilerOp
         },
     });
     return result.outputText;
+}
+
+// Adds an export for every top level declaration the file kept to itself, so a run can call a
+// function the file does not export rather than waiting for something else to call it.
+//
+// The line is added at the end rather than an `export` being put in front of each declaration,
+// because putting one in front would move every character after it and the map back to your source
+// is what says which line ran.
+export function exportEverything(js: string, emittedAt: string): string {
+    const parsed = ts.createSourceFile(emittedAt, js, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+    const kept: string[] = [];
+
+    for (const statement of parsed.statements) {
+        if (isExported(statement)) {
+            continue;
+        }
+        if ((ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement)) && statement.name !== undefined) {
+            kept.push(statement.name.text);
+            continue;
+        }
+        if (ts.isVariableStatement(statement)) {
+            for (const declared of statement.declarationList.declarations) {
+                if (ts.isIdentifier(declared.name)) {
+                    kept.push(declared.name.text);
+                }
+            }
+        }
+    }
+
+    if (kept.length === 0) {
+        return js;
+    }
+    const added = `export const ${privateHolder} = { ${kept.join(", ")} };\n`;
+    // The map the transpile wrote sits on the last line of the file and has to stay there, so the
+    // line goes in ahead of it.
+    const marker = js.lastIndexOf("//# sourceMappingURL=");
+    if (marker < 0) {
+        return `${js}\n${added}`;
+    }
+    return `${js.slice(0, marker)}${added}${js.slice(marker)}`;
+}
+
+// Whether a statement carries the `export` keyword.
+function isExported(statement: ts.Statement): boolean {
+    return ts.canHaveModifiers(statement) && (ts.getModifiers(statement) ?? []).some((one) => one.kind === ts.SyntaxKind.ExportKeyword);
 }
 
 // Points every import at the rewritten copy of what it named, so the run loads the copies rather

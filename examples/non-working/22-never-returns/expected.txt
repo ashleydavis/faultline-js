@@ -14,7 +14,7 @@ Deterministic simulation
   One seed ran against effects that answered, and 3 against a network that refuses connections, a file system that fails, a writer that takes only part of what it was given and a clock that jumps, one call in 4.
   Stepped over <count> calls for throwing on an input the function was never written for, and stopped <count> units that ran past the budget without returning. The paths they would have covered are not in the count above.
   Swept 4 seeds, with no scenario reporting a wrong answer.
-  Drove 3 rounds, each one after the first exploring only the functions with a path left.
+  Drove 2 rounds, each one after the first exploring only the functions with a path left.
   Full detail is in <work>/coverage-report.txt.
 
   One thing to do:

@@ -161,6 +161,12 @@ export class RunInjector implements Injector {
         }
 
         if (this.mode === "exploring") {
+            // An exploring call writes down what it reached too. Failing one place sends the code
+            // down a branch the clean call never took, and the places on that branch are found no
+            // other way.
+            if (failuresByEffect[effect].length > 0) {
+                this.recorded.push(here);
+            }
             const wanted = this.exploring;
             if (wanted !== undefined && wanted.point === pointName(here)) {
                 this.handedOut.push({ effect, failure: wanted.failure });

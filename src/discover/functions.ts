@@ -2,6 +2,7 @@
 // input factories and scenarios a sim file holds.
 
 import ts from "typescript";
+import { exportedAs } from "../build/emit.ts";
 import { functionLabel, isReportedFunction, type FunctionNode } from "./names.ts";
 import { recipeFor, typeKeyOf, type Recipe, type RecipeContext } from "./recipes.ts";
 import { toPosix } from "./sources.ts";
@@ -348,7 +349,7 @@ function reachOf(node: FunctionNode, exportNames: Map<ts.Node, string>): Reach {
         return {
             how: "method",
             className,
-            classExport: exportNames.get(parent) ?? "",
+            classExport: exportNames.get(parent) ?? classExportOf(parent),
             name: node.name.getText(node.getSourceFile()),
             onClass,
             accessor,
@@ -357,7 +358,40 @@ function reachOf(node: FunctionNode, exportNames: Map<ts.Node, string>): Reach {
     if (ts.isConstructorDeclaration(node)) {
         return { how: "inside", because: "it is a constructor, so it runs when an instance is built" };
     }
-    return { how: "inside", because: "the file it is in does not export it" };
+    // A declaration at the top of a file the file kept to itself. The copy exports it under a name
+    // of its own, so a run calls it directly rather than waiting for something else to call it.
+    const kept = keptName(node);
+    if (kept !== undefined) {
+        return { how: "export", name: exportedAs(kept) };
+    }
+    return { how: "inside", because: "it is written inside another function, so only that function reaches it" };
+}
+
+// The name a declaration at the top of a file was given, for one the file does not export. It is
+// nothing for a function written inside another function, which no export reaches.
+function keptName(node: FunctionNode): string | undefined {
+    if (ts.isFunctionDeclaration(node) && node.name !== undefined && ts.isSourceFile(node.parent)) {
+        return node.name.text;
+    }
+    const parent = node.parent;
+    if (
+        parent !== undefined &&
+        ts.isVariableDeclaration(parent) &&
+        ts.isIdentifier(parent.name) &&
+        ts.isSourceFile(parent.parent.parent.parent)
+    ) {
+        return parent.name.text;
+    }
+    return undefined;
+}
+
+// The name a class the file kept to itself is exported from the copy under. It is empty for a class
+// written inside a function, which no export reaches.
+function classExportOf(node: ts.ClassDeclaration | ts.ClassExpression): string {
+    if (ts.isClassDeclaration(node) && node.name !== undefined && ts.isSourceFile(node.parent)) {
+        return exportedAs(node.name.text);
+    }
+    return "";
 }
 
 // Every declaration the module exports, with the name it exports it under.

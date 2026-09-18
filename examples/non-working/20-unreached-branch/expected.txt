@@ -13,7 +13,7 @@ Deterministic simulation
   Found 1 source file, tested 1, exercised 1 function and executed 2 of 3 paths.
   One seed ran against effects that answered, and 15 against a network that refuses connections, a file system that fails, a writer that takes only part of what it was given and a clock that jumps, one call in 4.
   Swept 16 seeds, with no scenario reporting a wrong answer.
-  Drove 3 rounds, each one after the first exploring only the functions with a path left.
+  Drove 2 rounds, each one after the first exploring only the functions with a path left.
   Full detail is in <work>/coverage-report.txt.
 
   FAIL 1 code path that no call reached:

@@ -27,9 +27,21 @@ test("a function exported by a list is reached by the name the list gives it", (
     assert.deepEqual(facts.functions[0]?.reach, { how: "export", name: "hello" });
 });
 
-test("a function the file does not export says why it cannot be reached", () => {
+test("a function the file does not export is reached off the copy's own holder", () => {
     const reach = read("function hidden() {}\nexport function shown() { hidden(); }").functions[0]?.reach;
+    assert.deepEqual(reach, { how: "export", name: "__flt.hidden" });
+});
+
+test("a function written inside another function says why no call reaches it", () => {
+    const reach = read("export function outer() { function inner() {} return inner; }").functions
+        .find((one) => one.label === "inner")?.reach;
     assert.equal(reach?.how, "inside");
+});
+
+test("a class the file does not export is reached off the copy's own holder", () => {
+    const reach = read("class Store { read() {} }\nexport function use() { return new Store(); }").functions
+        .find((one) => one.label === "Store.read")?.reach;
+    assert.deepEqual(reach, { how: "method", className: "Store", classExport: "__flt.Store", name: "read", onClass: false, accessor: "none" });
 });
 
 test("a method says which class it is on and what that class is exported as", () => {

@@ -6,11 +6,11 @@
 
 import type { ClassInfo, FunctionInfo, ParameterInfo } from "../discover/functions.ts";
 import type { PathSite } from "../discover/paths.ts";
-import { effectIn, failuresByEffect, pointName } from "../effects/injector.ts";
+import { effectIn, failuresByEffect, pointName, type Point } from "../effects/injector.ts";
 import { RunChecklist, RunSubject } from "../effects/subject.ts";
 import type { FileModel, RunModel } from "../model.ts";
 import { functionKey, type FromDriver, type Unit } from "./protocol.ts";
-import { callsPerUnit, mostPointsExplored } from "./units.ts";
+import { callsPerUnit } from "./units.ts";
 import { CannotBuild, ValueMaker, type CallableFactory } from "./values.ts";
 
 // What a runtime has to supply for the driving to happen in it.
@@ -105,13 +105,13 @@ async function callOnce(
     const reach = held.reach;
     let target: ((...args: unknown[]) => unknown) | undefined;
     if (reach.how === "export") {
-        target = module[reach.name] as ((...args: unknown[]) => unknown) | undefined;
+        target = exportOf(module, reach.name) as ((...args: unknown[]) => unknown) | undefined;
     }
     if (reach.how === "method") {
         if (reach.classExport === "") {
             return "stepped";
         }
-        const klass = module[reach.classExport] as (new (...args: unknown[]) => unknown) | undefined;
+        const klass = exportOf(module, reach.classExport) as (new (...args: unknown[]) => unknown) | undefined;
         if (klass === undefined) {
             return "stepped";
         }
@@ -159,6 +159,17 @@ async function callOnce(
         // failing the run. Only a scenario says an answer was wrong.
         return "stepped";
     }
+}
+
+// What a module hands out under one name. A name with a dot in it is a declaration the file kept to
+// itself, which the copy hands out on one holder rather than as an export of its own.
+function exportOf(module: Record<string, unknown>, name: string): unknown {
+    const dot = name.indexOf(".");
+    if (dot < 0) {
+        return module[name];
+    }
+    const holder = module[name.slice(0, dot)] as Record<string, unknown> | undefined;
+    return holder?.[name.slice(dot + 1)];
 }
 
 // Checks every invariant against the subject the unit just ran with, and says whether the run
@@ -217,21 +228,18 @@ async function explore(
         stepped += 1;
     }
 
-    // Every place the call reached, with the first turn at each site before the second turn at any
-    // of them. A loop that reads ten files is ten turns at one site, and taking them in the order
-    // they happened would spend the whole budget inside the loop before any site after it was
-    // tried.
-    const places = watching.injector.recorded
-        .map((point, order) => ({ name: pointName(point), occurrence: point.occurrence, order }))
-        .filter((one, at, all) => all.findIndex((other) => other.name === one.name) === at)
-        .sort((left, right) => left.occurrence - right.occurrence || left.order - right.order)
-        .map((one) => one.name);
+    // Every place found so far. It grows as the exploring goes: failing one place sends the code
+    // down a branch the clean call never took, and the places on that branch are found no other
+    // way.
+    const places: string[] = [];
+    addPlaces(places, watching.injector.recorded);
 
     // The paths of this function an earlier round has yet to reach. They are what the exploring is
     // for, so reaching all of them is what finishes it.
     const wanted = file.paths.filter((one) => one.fn === held.label && !runtime.ticked.has(`${one.file}:${one.name}`));
 
-    combinations: for (const place of places.slice(0, mostPointsExplored)) {
+    combinations: for (let at = 0; at < places.length; at += 1) {
+        const place = places[at]!;
         const effect = effectIn(place);
         if (effect === undefined) {
             continue;
@@ -254,6 +262,7 @@ async function explore(
             catch {
                 stepped += 1;
             }
+            addPlaces(places, subject.injector.recorded);
         }
     }
 
@@ -261,6 +270,23 @@ async function explore(
     runtime.say({ type: "unit", index: unit.index, calls, stepped, fn: functionKey(file.file, held.label) });
     await runtime.sendCoverage(false);
     return stillHolds;
+}
+
+// Puts the places one call reached on the end of the list, leaving out the ones already there.
+//
+// The first turn at each site comes before the second turn at any of them. A loop that reads ten
+// files is ten turns at one site, and taking them in the order they happened would work through the
+// whole loop before any site after it was tried.
+function addPlaces(places: string[], recorded: Point[]): void {
+    const held = new Set(places);
+    const found = recorded
+        .map((point, order) => ({ name: pointName(point), occurrence: point.occurrence, order }))
+        .filter((one) => !held.has(one.name))
+        .filter((one, at, all) => all.findIndex((other) => other.name === one.name) === at)
+        .sort((left, right) => left.occurrence - right.occurrence || left.order - right.order);
+    for (const one of found) {
+        places.push(one.name);
+    }
 }
 
 // Whether every path the exploring is after has run. A runtime that cannot read what has run while

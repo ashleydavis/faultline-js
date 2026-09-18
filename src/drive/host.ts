@@ -70,16 +70,16 @@ export async function drive(model: RunModel, modelFile: string, onProgress: Prog
         rounds: 0,
     };
 
-    // How many rounds a run drives at most. Each one after the first drives only what is left, so
-    // three is enough for the exploration to reach what a draw missed and stops a project with an
-    // unreachable path from driving for ever.
-    const mostRounds = 3;
-
     let units = buildUnits(model);
     let seed = (model.seeds[model.seeds.length - 1] ?? 1) + 1;
     let ticked: string[] = [];
 
-    for (let round = 1; round <= mostRounds; round += 1) {
+    // A round drives only the functions with a path left, and the rounds carry on until one of them
+    // reaches no path the round before it had. There is no count of rounds: a project whose paths
+    // keep falling stays worth another round, and one whose paths have stopped falling is done
+    // whether that took two rounds or nine.
+    for (let round = 1; ; round += 1) {
+        const before = ticked.length;
         result.rounds = round;
         await driveList(model, modelFile, units, round === 1 ? undefined : units, ticked, result, onProgress);
         if (result.failure !== undefined || result.broke !== undefined) {
@@ -91,6 +91,9 @@ export async function drive(model: RunModel, modelFile: string, onProgress: Prog
         if (left.size === 0) {
             return result;
         }
+        if (round > 1 && ticked.length === before) {
+            return result;
+        }
         const next = buildExploration(model, left, seed);
         seed += 1;
         if (next.length === 0) {
@@ -98,8 +101,6 @@ export async function drive(model: RunModel, modelFile: string, onProgress: Prog
         }
         units = next;
     }
-
-    return result;
 }
 
 // The path names a run has reached, so a scenario in a later round reads them off the checklist.

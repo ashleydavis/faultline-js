@@ -9,11 +9,6 @@ import type { Unit } from "./protocol.ts";
 // a hang throws away work worth keeping.
 export const callsPerUnit = 4;
 
-// How many places an effect could fail one function is worth exploring. Each one costs a run per
-// way that effect can go wrong, so eight places is up to forty runs of one function, which is as
-// much as a function with a path still unreached is worth.
-export const mostPointsExplored = 8;
-
 // Builds the work for a later round: one unit per function that still has a path nothing reached.
 export function buildExploration(model: RunModel, unreached: Set<string>, seed: number): Unit[] {
     const units: Unit[] = [];

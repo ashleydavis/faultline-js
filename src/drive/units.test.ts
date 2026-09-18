@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { FunctionInfo } from "../discover/functions.ts";
 import type { RunModel } from "../model.ts";
-import { buildExploration, buildUnits, callsPerUnit, isFaulting, mostPointsExplored } from "./units.ts";
+import { buildExploration, buildUnits, callsPerUnit, isFaulting } from "./units.ts";
 
 // A function that can be reached, for a model a test builds.
 function reachable(label: string): FunctionInfo {
@@ -96,11 +96,6 @@ test("a later round with everything reached has no work in it", () => {
 
 test("a function nothing can call directly is not explored either", () => {
     assert.deepEqual(buildExploration(model([1], [inside("a")]), new Set(["a.ts#a"]), 9), []);
-});
-
-test("exploring every place is capped, because each one costs a run per way it can go wrong", () => {
-    assert.ok(mostPointsExplored > 0);
-    assert.ok(mostPointsExplored <= 16);
 });
 
 test("a model with no function and no scenario has no work in it", () => {

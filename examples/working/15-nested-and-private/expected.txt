@@ -2,7 +2,7 @@ Fault testing the JavaScript and TypeScript in 15-nested-and-private.
 
 Deterministic simulation of 1 project. The report comes at the end.
   Read 1 source file, with 2 functions to exercise.
-  Exercising 16 units, scenarios first.
+  Exercising 32 units, scenarios first.
   Reading what those calls reached.
 
 Deterministic simulation
