@@ -5,6 +5,7 @@
 // how they start it, how they load a module and how they read what V8 counted.
 
 import type { ClassInfo, FunctionInfo, ParameterInfo } from "../discover/functions.ts";
+import type { PathSite } from "../discover/paths.ts";
 import { failuresByEffect, pointName } from "../effects/injector.ts";
 import { RunChecklist, RunSubject } from "../effects/subject.ts";
 import type { FileModel, RunModel } from "../model.ts";
@@ -22,6 +23,11 @@ export interface Runtime {
 
     // Reads what V8 has counted and sends it up, when enough has happened to be worth sending.
     sendCoverage: (force: boolean) => Promise<void>;
+
+    // Which of one file's code paths have run so far, by the name of the path. A runtime that
+    // cannot say while it is still driving leaves this out, and the exploring then tries every
+    // combination rather than stopping at the one that finishes the function.
+    reached?: (file: FileModel) => Promise<Set<string>>;
 
     // The path names earlier rounds reached, which a scenario reads off the checklist.
     ticked: Set<string>;
@@ -186,6 +192,10 @@ async function invariantsHold(runtime: Runtime, model: RunModel, unit: Unit, sub
 //
 // A draw reaches the places it happens to land on. This reaches all of them, so the handler for a
 // failure on the third read is found as surely as the one for a failure on the first.
+//
+// It stops as soon as every code path in the function has run. A function with six places an effect
+// can fail costs thirty calls to try every combination, and the run usually only needs the first
+// few of them.
 async function explore(
     runtime: Runtime,
     model: RunModel,
@@ -215,9 +225,16 @@ async function explore(
         }
     }
 
-    for (const place of places.slice(0, mostPointsExplored)) {
+    // The paths of this function an earlier round has yet to reach. They are what the exploring is
+    // for, so reaching all of them is what finishes it.
+    const wanted = file.paths.filter((one) => one.fn === held.label && !runtime.ticked.has(`${one.file}:${one.name}`));
+
+    combinations: for (const place of places.slice(0, mostPointsExplored)) {
         const effect = place.slice(0, place.indexOf("#")) as keyof typeof failuresByEffect;
         for (const failure of failuresByEffect[effect] ?? []) {
+            if (await allRan(runtime, file, wanted)) {
+                break combinations;
+            }
             const subject = new RunSubject(unit.seed, "exploring");
             subject.injector.explore(place, failure);
             try {
@@ -239,6 +256,16 @@ async function explore(
     runtime.say({ type: "unit", index: unit.index, calls, stepped, fn: functionKey(file.file, held.label) });
     await runtime.sendCoverage(false);
     return stillHolds;
+}
+
+// Whether every path the exploring is after has run. A runtime that cannot read what has run while
+// it is still driving answers no, so every combination is tried.
+async function allRan(runtime: Runtime, file: FileModel, wanted: PathSite[]): Promise<boolean> {
+    if (runtime.reached === undefined) {
+        return false;
+    }
+    const ran = await runtime.reached(file);
+    return wanted.every((one) => ran.has(one.name));
 }
 
 // Runs one unit and says whether the run carries on. A scenario that says the answer is wrong

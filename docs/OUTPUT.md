@@ -75,7 +75,7 @@ Exit code: 0.
 
 ## A run that went back for what it missed
 
-Captured from `examples/working/22-exploration`. The first round left a path unreached. The second drove only the function it was in, reaching every place its effects could fail.
+Captured from `examples/working/22-exploration`. The first round left a path unreached. The second drove only the function it was in, failing each place its effects could fail in turn until every path had run.
 
 ```sh
 $ flt . --seeds 2

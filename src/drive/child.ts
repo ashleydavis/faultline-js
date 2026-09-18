@@ -8,14 +8,15 @@ import inspector from "node:inspector";
 import { pathToFileURL } from "node:url";
 import { addInto, type ScriptCoverage } from "../coverage/v8.ts";
 import type { FileModel, RunModel } from "../model.ts";
+import { Copies, countsIn, didRun } from "../report/tally.ts";
 import type { FromDriver, ToDriver, Unit } from "./protocol.ts";
 import { buildUnits } from "./units.ts";
 import type { CallableFactory } from "./values.ts";
 import { describe, readFactories, runUnit, type Runtime } from "./work.ts";
 
-// How often coverage is read and sent up. V8 counts from the moment coverage starts and never
-// resets, so reading it late loses nothing except when this process is stopped for running past its
-// budget. Two seconds bounds what such a stop throws away.
+// How often coverage is read and sent up. What this process has counted is kept here between
+// readings, so reading it late loses nothing except when the process is stopped for running past
+// its budget. Two seconds bounds what such a stop throws away.
 const sendEvery = 2000;
 
 // The channel V8's own coverage comes back over.
@@ -74,8 +75,31 @@ function runtimeFor(model: RunModel, ticked: Set<string>): Runtime {
             lastSent = now;
             say({ type: "coverage", scripts: await takeCoverage(model.work) });
         },
+        reached: async (file) => {
+            await takeCoverage(model.work);
+            const counts = countsIn(copiesOf(model), new Map([[0, counted]]));
+            const ran = new Set<string>();
+            for (const site of file.paths) {
+                if (didRun(site, counts)) {
+                    ran.add(site.name);
+                }
+            }
+            return ran;
+        },
         ticked,
     };
+}
+
+// Where the copies sit, opened once. Asking what has run part way through a unit then costs the
+// lookups rather than parsing every source map again.
+let copies: Copies | undefined;
+
+// The copies of this run, built the first time something asks what has run.
+function copiesOf(model: RunModel): Copies {
+    if (copies === undefined) {
+        copies = new Copies(model);
+    }
+    return copies;
 }
 
 // Reads the model, then works through the list until it runs out or is stopped.
