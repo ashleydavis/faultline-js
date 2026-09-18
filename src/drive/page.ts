@@ -7,7 +7,7 @@
 import { startDriving } from "../effects/current.ts";
 import { installGlobals } from "../effects/globals.ts";
 import type { RunModel } from "../model.ts";
-import type { FromDriver, Unit } from "./protocol.ts";
+import { askedFromPage, type FromDriver, type Unit } from "./protocol.ts";
 import { readFactories, runUnit, type Runtime } from "./work.ts";
 
 // Where the page leaves what it has said, for the process outside to read.
@@ -16,6 +16,7 @@ export const saidOnPage = "__faultlineSaid";
 // Starts the run inside the page. `model` is the run, `units` is the work, and `ticked` is what
 // earlier rounds reached.
 export async function driveInPage(model: RunModel, units: Unit[], ticked: string[]): Promise<FromDriver[]> {
+    const asked = (globalThis as unknown as Record<string, (file: string) => Promise<string[]>>)[askedFromPage];
     // The page's own clock, network, socket and stores are replaced before any of the project is
     // loaded, so a module that reads one at its top level reads this run's.
     installGlobals();
@@ -30,6 +31,9 @@ export async function driveInPage(model: RunModel, units: Unit[], ticked: string
         },
         // Coverage is taken from outside the page, so there is none to send from in here.
         sendCoverage: async () => {},
+        // What has run is counted outside the page, where the maps back to the source are, so the
+        // question goes out and the answer comes back.
+        reached: asked === undefined ? undefined : async (file) => new Set(await asked(file.file)),
         ticked: new Set(ticked),
     };
 

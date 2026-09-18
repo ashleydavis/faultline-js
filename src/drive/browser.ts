@@ -8,9 +8,10 @@ import http from "node:http";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
-import type { ScriptCoverage } from "../coverage/v8.ts";
+import { addInto, type ScriptCoverage } from "../coverage/v8.ts";
+import { Copies, countsIn, didRun } from "../report/tally.ts";
 import type { RunModel } from "../model.ts";
-import type { FromDriver, Unit } from "./protocol.ts";
+import { askedFromPage, type FromDriver, type Unit } from "./protocol.ts";
 
 // Where the tool's own driver is put inside the work directory, so the page can load it.
 export const driverDirectory = "__faultline";
@@ -51,13 +52,19 @@ interface Chromium {
 
 // The little of a page this uses.
 interface Page {
-    coverage: {
-        startJSCoverage: (options: { reportAnonymousScripts: boolean }) => Promise<void>;
-        stopJSCoverage: () => Promise<unknown[]>;
-    };
+    context: () => { newCDPSession: (page: Page) => Promise<Session> };
+    exposeFunction: (name: string, work: (...args: never[]) => unknown) => Promise<void>;
     goto: (url: string) => Promise<unknown>;
     evaluate: <T>(body: string) => Promise<T>;
 }
+
+// The little of a debugging session this uses. It is what lets the run read what V8 has counted
+// while the page is still running, which `page.coverage` only reports once it is stopped.
+interface Session {
+    send: (method: string, params?: Record<string, unknown>) => Promise<{ result?: ScriptCoverage[] }>;
+    detach: () => Promise<void>;
+}
+
 
 // Puts the tool's own driver into the work directory, as modules a browser can load.
 //
@@ -184,7 +191,41 @@ export async function driveInBrowser(
     }
     try {
         const page = await browser.newPage();
-        await page.coverage.startJSCoverage({ reportAnonymousScripts: false });
+        const watcher = await page.context().newCDPSession(page);
+        await watcher.send("Profiler.enable");
+        // The same counting the Node side starts: a count per block rather than a yes or no per
+        // function, because a block is what a code path is read from.
+        await watcher.send("Profiler.startPreciseCoverage", { callCount: true, detailed: true });
+
+        // Everything the page has counted, added up across every reading. Taking coverage resets
+        // V8's counters, so a reading is what has run since the last one.
+        const counted = new Map<string, ScriptCoverage>();
+        const served_at = `http://127.0.0.1:${served.port}/`;
+
+        // Reads what the page has counted since the last reading and adds it to the total. The page
+        // loaded the copies over a server, so V8 names them by the address they came from, and
+        // everything past here knows them by where they sit on disk.
+        async function take(): Promise<void> {
+            const answer = await watcher.send("Profiler.takePreciseCoverage");
+            addInto(
+                counted,
+                (answer.result ?? [])
+                    .filter((script) => script.url.startsWith(served_at) && !script.url.includes(driverDirectory))
+                    .map((script) => ({
+                        ...script,
+                        url: pathToFileURL(path.join(model.work, script.url.slice(served_at.length))).href,
+                    })),
+            );
+        }
+
+        const copies = new Copies(model);
+        await page.exposeFunction(askedFromPage, async (file: string): Promise<string[]> => {
+            await take();
+            const counts = countsIn(copies, new Map([[0, counted]]));
+            const held = model.files.find((one) => one.file === file);
+            return (held?.paths ?? []).filter((site) => didRun(site, counts)).map((site) => site.name);
+        });
+
         await page.goto(`http://127.0.0.1:${served.port}/`);
 
         // The page fetches the run and the work rather than being handed them, so nothing large
@@ -197,17 +238,9 @@ export async function driveInBrowser(
             return await driver.driveInPage(model, units, ticked);
         })()`);
 
-        const taken = (await page.coverage.stopJSCoverage()) as unknown as ScriptCoverage[];
-        // The page loaded the copies over a server, so V8 names them by the address they came from.
-        // Everything past here knows them by where they sit on disk.
-        const served_at = `http://127.0.0.1:${served.port}/`;
-        const scripts = taken
-            .filter((script) => script.url.startsWith(served_at) && !script.url.includes(driverDirectory))
-            .map((script) => ({
-                ...script,
-                url: pathToFileURL(path.join(model.work, script.url.slice(served_at.length))).href,
-            }));
-        return { said, scripts };
+        await take();
+        await watcher.detach();
+        return { said, scripts: [...counted.values()] };
     }
     catch (thrown) {
         return {

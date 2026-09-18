@@ -26,6 +26,11 @@ export interface Unit {
     fn?: number;
 }
 
+// What a page calls to ask which code paths have run so far. The counting is read outside the page,
+// where the maps back to your source are, so the question goes out through a function put on the
+// page and the answer comes back.
+export const askedFromPage = "__faultlineReached";
+
 // The key a function is counted under, which is its file and the name the report gives it.
 export function functionKey(file: string, label: string): string {
     return `${file}#${label}`;
