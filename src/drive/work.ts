@@ -124,10 +124,11 @@ async function callOnce(
     module: Record<string, unknown>,
     held: FunctionInfo,
     classes: ClassInfo[],
+    siblings: FunctionInfo[] = [],
 ): Promise<"called" | "stepped"> {
     const before = runWith(maker.subject);
     try {
-        return await callWhileRunning(maker, module, held, classes);
+        return await callWhileRunning(maker, module, held, classes, siblings);
     }
     finally {
         runWith(before);
@@ -140,6 +141,7 @@ async function callWhileRunning(
     module: Record<string, unknown>,
     held: FunctionInfo,
     classes: ClassInfo[],
+    siblings: FunctionInfo[] = [],
 ): Promise<"called" | "stepped"> {
     const reach = held.reach;
     let target: ((...args: unknown[]) => unknown) | undefined;
@@ -172,6 +174,7 @@ async function callWhileRunning(
                 // other call that throws on an input it was never written for.
                 return "stepped";
             }
+            usedFirst(maker, instance, held, siblings);
             if (reach.accessor !== "none") {
                 return readOrWrite(maker, instance, reach.accessor, reach.name, held);
             }
@@ -195,6 +198,36 @@ async function callWhileRunning(
         // A function that throws on an input it was never written for is stepped over rather than
         // failing the run. Only a scenario says an answer was wrong.
         return "stepped";
+    }
+}
+
+// Uses an object before the method being measured is called on it.
+//
+// A method whose path turns on what the object already holds is reached by no call to a fresh one.
+// A queue drained before anything was put in it never runs the body of its own loop, and it is the
+// commonest thing a class has: a method that does something only once another has been called.
+//
+// The other methods of the class are called first, as many of them as the turn says, so one turn
+// calls the method on a fresh object and later turns call it on one that has been used.
+function usedFirst(maker: ValueMaker, instance: Record<string, unknown>, held: FunctionInfo, siblings: FunctionInfo[]): void {
+    const others = siblings.filter((one) => one.label !== held.label && one.reach.how === "method" && !one.reach.onClass);
+    for (let at = 0; at < maker.at % (others.length + 1); at += 1) {
+        const other = others[at % others.length]!;
+        const name = other.reach.how === "method" ? other.reach.name : "";
+        const method = instance[name];
+        if (typeof method !== "function") {
+            continue;
+        }
+        try {
+            const answer = (method as (...args: unknown[]) => unknown).call(instance, ...argumentsFor(maker, other.parameters));
+            if (answer instanceof Promise) {
+                answer.catch(() => undefined);
+            }
+        }
+        catch {
+            // A method that refuses what the run built leaves the object as it was, and the method
+            // being measured is still called on it.
+        }
     }
 }
 
@@ -314,7 +347,7 @@ async function explore(
     const watching = new RunSubject(unit.seed, "recording", model.work);
     watching.files.holds(file.properties, file.tests);
     try {
-        await callOnce(new ValueMaker(watching, factories, 0, file), module, held, file.classes);
+        await callOnce(new ValueMaker(watching, factories, 0, file), module, held, file.classes, file.functions);
         calls += 1;
     }
     catch {
@@ -345,7 +378,7 @@ async function explore(
             subject.files.holds(file.properties, file.tests, at);
             subject.injector.explore(place, failure);
             try {
-                const answer = await callOnce(new ValueMaker(subject, factories, at, file), module, held, file.classes);
+                const answer = await callOnce(new ValueMaker(subject, factories, at, file), module, held, file.classes, file.functions);
                 if (answer === "called") {
                     calls += 1;
                 }
@@ -515,7 +548,7 @@ export async function runUnit(runtime: Runtime, model: RunModel, unit: Unit, fac
         try {
             subject.files.holds(file.properties, file.tests, round);
             const maker = new ValueMaker(subject, factories, round, file);
-            const answer = await callOnce(maker, module, held, file.classes);
+            const answer = await callOnce(maker, module, held, file.classes, file.functions);
             const missing = maker.stoodIn[0];
             if (cannotBuild === undefined && missing !== undefined) {
                 cannotBuild = { parameter: parameterNeeding(held, missing), typeText: missing.typeText };

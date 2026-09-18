@@ -105,3 +105,25 @@ test("a position the transpile left nowhere is answered with nothing", () => {
     const map = JSON.stringify({ version: 3, sources: ["a.ts"], names: [], mappings: "" });
     assert.equal(new Places(map, "x\n").generatedOffsetOf(5, 0), -1);
 });
+
+test("a wide range counting nothing does not hide what an earlier reading counted", () => {
+    // The tail of a function that did not run in the second reading comes back as one range
+    // counting nothing, and that one range covers blocks the first reading counted separately.
+    const total = new Map<string, ScriptCoverage>();
+    addInto(total, [script("file:///a.js", [[0, 100, 21], [40, 60, 0], [70, 80, 0]])]);
+    addInto(total, [script("file:///a.js", [[0, 100, 3], [40, 100, 0]])]);
+    // The block at 60 to 70 ran under the first reading, and the second reading says nothing
+    // about it beyond the wide range it sits inside.
+    assert.equal(countAt(total.get("file:///a.js")!, 65), 21);
+    assert.equal(countAt(total.get("file:///a.js")!, 45), 0);
+});
+
+test("the total is a row of pieces that do not overlap", () => {
+    const total = new Map<string, ScriptCoverage>();
+    addInto(total, [script("file:///a.js", [[0, 100, 5], [40, 60, 2]])]);
+    addInto(total, [script("file:///a.js", [[0, 100, 3], [20, 80, 1]])]);
+    const ranges = [...total.get("file:///a.js")!.functions[0]!.ranges].sort((left, right) => left.startOffset - right.startOffset);
+    for (let at = 0; at + 1 < ranges.length; at += 1) {
+        assert.equal(ranges[at]!.endOffset, ranges[at + 1]!.startOffset);
+    }
+});

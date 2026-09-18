@@ -76,25 +76,32 @@ export function countAt(script: ScriptCoverage, offset: number): number {
 // The two readings do not report the same ranges. V8 leaves out a block whose count matches the
 // block around it, so a block that ran three times in one reading and three times in the next is a
 // range of its own once and no range at all the second time. Adding range to range by where it
-// starts and ends would read that as three. So every place either reading knows about is asked of
-// both, through the same narrowest range lookup the report uses, and the two answers are added.
+// starts and ends would read that as three.
+//
+// Keeping both readings' ranges as they came does not work either. A reading in which the tail of a
+// function never ran reports that whole tail as one range counting nothing, and that one range
+// covers blocks an earlier reading counted separately: what the earlier reading knew about them is
+// then hidden behind it.
+//
+// So the total is kept as a row of pieces that do not overlap. Every offset either reading names is
+// a boundary, and the piece between two boundaries is asked of both readings and the two answers
+// added. A piece holds one count because nothing inside it is divided any further, and the
+// narrowest range covering an offset is then exactly the piece it is in.
 export function addInto(total: Map<string, ScriptCoverage>, taken: ScriptCoverage[]): void {
     for (const script of taken) {
-        const held = total.get(script.url);
-        if (held === undefined) {
-            total.set(script.url, { url: script.url, functions: script.functions.map((one) => ({ ...one, ranges: [...one.ranges] })) });
-            continue;
+        const held = total.get(script.url) ?? { url: script.url, functions: [] };
+        const edges = [...new Set([...everyRange(held), ...everyRange(script)].flatMap((one) => [one.startOffset, one.endOffset]))].sort(
+            (left, right) => left - right,
+        );
+        const pieces: Range[] = [];
+        for (let at = 0; at + 1 < edges.length; at += 1) {
+            const startOffset = edges[at]!;
+            const endOffset = edges[at + 1]!;
+            pieces.push({ startOffset, endOffset, count: countAt(held, startOffset) + countAt(script, startOffset) });
         }
-        const byPlace = new Map<string, Range>();
-        for (const range of [...everyRange(held), ...everyRange(script)]) {
-            byPlace.set(`${range.startOffset}:${range.endOffset}`, { startOffset: range.startOffset, endOffset: range.endOffset, count: 0 });
-        }
-        for (const range of byPlace.values()) {
-            range.count = countAt(held, range.startOffset) + countAt(script, range.startOffset);
-        }
-        // One function holding every range reads the same to `countAt`, which only ever looks for
+        // One function holding every piece reads the same to `countAt`, which only ever looks for
         // the narrowest range covering an offset.
-        total.set(script.url, { url: script.url, functions: [{ functionName: "", ranges: [...byPlace.values()] }] });
+        total.set(script.url, { url: script.url, functions: [{ functionName: "", ranges: pieces }] });
     }
 }
 

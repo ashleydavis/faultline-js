@@ -76,6 +76,35 @@ export const mostTurns = Math.max(interestingStrings.length, interestingNumbers.
 // built from a recipe that refers to itself through a factory.
 const deepestValue = 8;
 
+// The strings worth trying for one file: every string it names, and one built with something on
+// either side of it.
+//
+// A separator is named on its own and never appears in a made up value, so the code after a split
+// or a join is reached by neither. There is a cap, because a file naming a hundred strings would
+// cost a hundred turns before any of the ones written here were tried.
+export function builtAround(tests: (string | number | boolean)[]): string[] {
+    const named = tests.filter((one): one is string => typeof one === "string");
+    const out: string[] = [];
+    for (const one of named) {
+        out.push(one);
+        if (one !== "" && one.length <= longestBuiltAround) {
+            // Four shapes, because what the code after a split or a join turns on differs: two
+            // numbers in order, two out of order, two that are not numbers at all, and more than
+            // two.
+            out.push(`1${one}2`, `2${one}1`, `a${one}b`, `a${one}b${one}c`);
+        }
+    }
+    return out.slice(0, mostBuiltAround);
+}
+
+// How long a string a file names may be before nothing is built around it. A file naming a whole
+// paragraph is naming a message rather than a separator, and a separator is what this is for.
+const longestBuiltAround = 8;
+
+// How many strings one file hands the run. Every one of them costs a turn before the ones written
+// here are reached.
+const mostBuiltAround = 96;
+
 // A stand-in for a value the run cannot build.
 //
 // It answers any property with another stand-in and it can be called, so a function that reaches
@@ -195,9 +224,18 @@ export class ValueMaker {
         return this.turn;
     }
 
+    // The strings worth trying that come from the file being measured: the ones it names, and
+    // strings built around each of them.
+    //
+    // A file that splits on "-" names "-" and nothing else, and a string that is only "-" splits
+    // into two empty pieces. What the code after the split turns on is a string with something on
+    // either side of it, so those are built here.
+    private readonly stringsToTry: string[];
+
     constructor(subject: RunSubject, factories: CallableFactory[], turn = 0, file?: { tests: (string | number | boolean)[]; properties: string[] }) {
         this.turn = turn;
         this.tests = file?.tests ?? [];
+        this.stringsToTry = builtAround(this.tests);
         this.properties = file?.properties ?? [];
         this.subject = subject;
         this.factories = new Map();
@@ -234,7 +272,7 @@ export class ValueMaker {
                     { kind: "array", element: { kind: "number" } },
                 ]), depth + 1);
             case "string":
-                return this.worthTrying([...this.tests.filter((one) => typeof one === "string"), ...interestingStrings]);
+                return this.worthTrying([...this.stringsToTry, ...interestingStrings]);
             case "number":
                 return this.worthTrying([...this.tests.filter((one) => typeof one === "number"), ...interestingNumbers]);
             case "bigint":

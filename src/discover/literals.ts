@@ -37,10 +37,6 @@ const testing = new Set<ts.SyntaxKind>([
     ts.SyntaxKind.InKeyword,
 ]);
 
-// The calls whose arguments say what a branch turns on. Each one answers yes or no about a value,
-// and what it is given is the value that makes it say yes.
-const asking = new Set(["startsWith", "endsWith", "includes", "indexOf", "lastIndexOf", "match", "test", "has", "get"]);
-
 // How many values one file hands the run. A file comparing against thousands of strings would make
 // every call cost thousands of turns, and the ones a file tests against most are the ones written
 // in it most.
@@ -48,41 +44,48 @@ const mostValues = 64;
 
 // Reads them out of one file.
 export function literalsIn(checker: ts.TypeChecker, source: ts.SourceFile): Literals {
-    const values: (string | number | boolean)[] = [];
+    // What a branch turns on directly. These come first, because a value a comparison tests against
+    // is the one that decides which way the branch goes.
+    const tested: (string | number | boolean)[] = [];
+
+    // What the file hands to a call. A separator handed to `split`, a pattern handed to `replace`:
+    // the code after the call turns on what the call made of it, so the value matters as much.
+    const given: (string | number | boolean)[] = [];
+
     const properties: string[] = [];
 
     // Takes what one expression is worth, when it is worth anything.
-    function take(node: ts.Node): void {
+    function take(node: ts.Node, into: (string | number | boolean)[]): void {
         const held = valueOf(checker, node);
-        if (held !== undefined && !values.includes(held)) {
-            values.push(held);
+        if (held !== undefined && !tested.includes(held) && !given.includes(held)) {
+            into.push(held);
         }
     }
 
     function visit(node: ts.Node): void {
         if (ts.isBinaryExpression(node) && testing.has(node.operatorToken.kind)) {
-            take(node.left);
-            take(node.right);
+            take(node.left, tested);
+            take(node.right, tested);
         }
         if (ts.isCaseClause(node)) {
-            take(node.expression);
+            take(node.expression, tested);
         }
-        if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && asking.has(node.expression.name.text)) {
-            for (const argument of node.arguments) {
-                take(argument);
+        if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
+            for (const argument of node.arguments ?? []) {
+                take(argument, given);
             }
         }
         if (ts.isPropertyAccessExpression(node) && !properties.includes(node.name.text)) {
             properties.push(node.name.text);
         }
         if (ts.isElementAccessExpression(node)) {
-            take(node.argumentExpression);
+            take(node.argumentExpression, tested);
         }
         ts.forEachChild(node, visit);
     }
 
     visit(source);
-    return { values: values.slice(0, mostValues), properties: properties.slice(0, mostValues) };
+    return { values: [...tested, ...given].slice(0, mostValues), properties: properties.slice(0, mostValues) };
 }
 
 // What one expression is worth, for an expression the checker knows one value for. A name whose
