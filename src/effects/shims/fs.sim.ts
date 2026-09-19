@@ -142,7 +142,21 @@ export async function theCallsThatReachADiskAndAreStopped(injector: Injector, ch
         files.openSync();
         files.mkdtempSync("/made-");
         files.realpathSync("/streamed.txt");
-        files.readlinkSync("/streamed.txt");
+        files.realpathSync("/a-link.txt");
+        if (files.readlinkSync("/a-link.txt") !== "/notes.txt") {
+            throw new Error("ALinkDidNotSayWhatItPointsAt");
+        }
+        // Asking a path that is no link what it points at fails the way the runtime fails it.
+        let refused = false;
+        try {
+            files.readlinkSync("/streamed.txt");
+        }
+        catch {
+            refused = true;
+        }
+        if (!refused) {
+            throw new Error("APathThatIsNoLinkSaidWhatItPointsAt");
+        }
         files.globSync();
         files.statfsSync();
         files.fstatSync().isFile();
