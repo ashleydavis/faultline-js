@@ -1,8 +1,9 @@
 // What the copy imports in place of `node:fs`.
 //
-// The code under test asks for a file the way it always did. This answers from the run's own tree,
-// held in memory, and fails the way the runtime fails whenever the injector says this call goes
-// wrong. Nothing here touches the disk.
+// The code under test asks for a file the way it always did. This answers from the run's own tree
+// and fails the way the runtime fails whenever the injector says this call goes wrong. The tree
+// reads the disk for a path no write has covered and holds every write in memory, so no call here
+// writes to the disk.
 //
 // A call made when no run is in flight goes to the real `node:fs`, so the tool's own reads are its
 // own.

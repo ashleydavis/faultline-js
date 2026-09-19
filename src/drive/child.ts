@@ -8,6 +8,7 @@ import inspector from "node:inspector";
 import { pathToFileURL } from "node:url";
 import { addInto, type ScriptCoverage } from "../coverage/v8.ts";
 import { startDriving } from "../effects/current.ts";
+import { readsBeneath, type Beneath } from "../effects/effects.ts";
 import { installGlobals, realNow } from "../effects/globals.ts";
 import type { FileModel, RunModel } from "../model.ts";
 import { Copies, countsIn, didRun } from "../report/tally.ts";
@@ -15,6 +16,36 @@ import type { FromDriver, ToDriver, Unit } from "./protocol.ts";
 import { buildUnits } from "./units.ts";
 import type { CallableFactory } from "./values.ts";
 import { describe, readFactories, runUnit, type Runtime } from "./work.ts";
+
+// What the disk holds, for a run to read where it was given no file of its own.
+//
+// The disk is only ever read here. Every write a run makes is held in the run's own tree, so a
+// project being measured is read and never changed.
+const onThisDisk: Beneath = {
+    file(path) {
+        try {
+            if (!fs.statSync(path).isFile()) {
+                return undefined;
+            }
+            return fs.readFileSync(path, "utf8");
+        }
+        catch {
+            return undefined;
+        }
+    },
+
+    names(path) {
+        try {
+            if (!fs.statSync(path).isDirectory()) {
+                return undefined;
+            }
+            return fs.readdirSync(path);
+        }
+        catch {
+            return undefined;
+        }
+    },
+};
 
 // How often coverage is read and sent up. What this process has counted is kept here between
 // readings, so reading it late loses nothing except when the process is stopped for running past
@@ -112,6 +143,7 @@ async function main(): Promise<void> {
     // The clock, the network and the rest are replaced before any of the project is loaded, so a
     // module that reads one at its top level reads this run's.
     installGlobals();
+    readsBeneath(onThisDisk);
     startDriving();
     const runtime = runtimeFor(model, new Set(told.ticked ?? []));
 
@@ -163,3 +195,4 @@ process.on("unhandledRejection", () => {
 });
 
 await main();
+

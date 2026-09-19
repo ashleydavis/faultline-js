@@ -127,14 +127,45 @@ export class RunNet {
     }
 }
 
-// A file system a run owns, held in memory. It never touches the disk, so no run can write into the
-// repository it is measuring.
+// What a run reads for a path no write has covered.
+//
+// The disk is only ever read, and the reading is handed in rather than imported, because this file
+// is also bundled for a browser and a browser has no disk. Node's driver puts the real one in and
+// a browser run leaves it out.
+export interface Beneath {
+    // What the disk holds at one path, or nothing when it holds no file there.
+    file(path: string): string | undefined;
+
+    // What the disk holds under one directory, as names, or nothing when it has no directory there.
+    names(path: string): string[] | undefined;
+}
+
+// The disk every run reads, or nothing where there is none.
+let beneath: Beneath | undefined;
+
+// Says what a run reads for a path no write has covered. The driver calls this once, before
+// anything is driven.
+export function readsBeneath(reader: Beneath | undefined): void {
+    beneath = reader;
+}
+
+// A file system a run owns. Every write is held in memory and no write reaches the disk, so no run
+// can write into the repository it is measuring.
+//
+// A read is answered from what this run was given, then from the disk, then from a made up file.
+// Reading the disk is what lets a project read its own manifest, its own fixture and its own
+// template, and a write over one of those is seen by this run alone.
 //
 // The replaced `node:fs` sits on this, and so does every other way the code under test reaches a
 // file, so one run has one tree however the code under test got at it.
 export class RunFiles {
-    // Every file this run has, by path.
+    // Every file this run has been given, by path. A path that is not here is looked for on the
+    // disk before it is made up.
     private readonly contents = new Map<string, string>();
+
+    // Every path this run has taken away. A file the run removed stays removed even when the disk
+    // still has it, so code that removes a file and reads it back reads what it would read.
+    private readonly removed = new Set<string>();
 
     // Every directory this run has been told to make, by path. A file's own directories count as
     // made, so a read after a write works without the directory being made first.
@@ -209,12 +240,38 @@ export class RunFiles {
     }
 
     // Reads one file, and throws the way the runtime throws when it cannot.
+    //
+    // A path this run was given is read from what it was given. A path it was not is read from the
+    // disk when the disk has it, so a project that reads its own manifest, its own fixture or its
+    // own template reads the real one. Only a path neither has is made up.
     readNow(path: string): string {
         this.refuse(path, "open");
         if (this.unreadable) {
             return "<not json at all>";
         }
-        return this.contents.get(clean(path)) ?? this.unasked;
+        const at = clean(path);
+        const held = this.contents.get(at);
+        if (held !== undefined) {
+            return held;
+        }
+        return this.onDisk(at) ?? this.unasked;
+    }
+
+    // What the disk holds at one path, or nothing when it holds no file there.
+    //
+    // The disk is only ever read. A write goes to this run's own tree and the file the project
+    // keeps is left as it was, which is what keeps a run from writing into the repository it is
+    // measuring.
+    private onDisk(at: string): string | undefined {
+        if (this.removed.has(at)) {
+            return undefined;
+        }
+        return beneath?.file(at);
+    }
+
+    // What the disk holds under one directory, as names, or nothing when it has no directory there.
+    private namesOnDisk(at: string): string[] | undefined {
+        return beneath?.names(at);
     }
 
     // Writes one file, replacing what was there, and makes the directories above it.
@@ -222,6 +279,7 @@ export class RunFiles {
         this.refuse(path, "open");
         const at = clean(path);
         this.contents.set(at, contents);
+        this.removed.delete(at);
         for (const above of directoriesAbove(at)) {
             this.directories.add(above);
         }
@@ -231,7 +289,8 @@ export class RunFiles {
     appendNow(path: string, contents: string): void {
         this.refuse(path, "open");
         const at = clean(path);
-        this.contents.set(at, (this.contents.get(at) ?? "") + contents);
+        this.contents.set(at, (this.contents.get(at) ?? this.onDisk(at) ?? "") + contents);
+        this.removed.delete(at);
         for (const above of directoriesAbove(at)) {
             this.directories.add(above);
         }
@@ -254,10 +313,15 @@ export class RunFiles {
         this.refuse(path, "scandir");
         const at = clean(path);
         const prefix = at === "/" ? "/" : `${at}/`;
-        const names = new Set<string>();
+        const names = new Set<string>(this.namesOnDisk(at) ?? []);
         for (const held of [...this.contents.keys(), ...this.directories]) {
             if (held !== at && held.startsWith(prefix)) {
                 names.add(held.slice(prefix.length).split("/")[0]!);
+            }
+        }
+        for (const gone of this.removed) {
+            if (gone.startsWith(prefix) && !gone.slice(prefix.length).includes("/")) {
+                names.delete(gone.slice(prefix.length));
             }
         }
         return [...names].sort();
@@ -267,7 +331,9 @@ export class RunFiles {
     // fails only when the injector fails it.
     removeNow(path: string): void {
         this.refuse(path, "unlink");
-        this.contents.delete(clean(path));
+        const at = clean(path);
+        this.contents.delete(at);
+        this.removed.add(at);
     }
 
     // Makes one directory, and the ones above it.
@@ -290,6 +356,13 @@ export class RunFiles {
         }
         if (this.directories.has(at)) {
             return { isFile: false, isDirectory: true, size: 0 };
+        }
+        if (this.namesOnDisk(at) !== undefined) {
+            return { isFile: false, isDirectory: true, size: 0 };
+        }
+        const fromDisk = this.onDisk(at);
+        if (fromDisk !== undefined) {
+            return { isFile: true, isDirectory: false, size: fromDisk.length };
         }
         // A path the run was never told about is a file holding what a read of it gives back.
         return { isFile: true, isDirectory: false, size: this.unasked.length };
