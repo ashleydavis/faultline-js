@@ -340,15 +340,15 @@ function reachOf(node: FunctionNode, exportNames: Map<ts.Node, string>): Reach {
     if (exported !== undefined) {
         return { how: "export", name: exported };
     }
+    // A parsed node always has a parent, so there is no check for one here or below.
     const parent = node.parent;
-    if (parent !== undefined && ts.isVariableDeclaration(parent)) {
+    if (ts.isVariableDeclaration(parent)) {
         const named = exportNames.get(parent);
         if (named !== undefined) {
             return { how: "export", name: named };
         }
     }
     if (
-        parent !== undefined &&
         (ts.isClassDeclaration(parent) || ts.isClassExpression(parent)) &&
         (ts.isMethodDeclaration(node) || ts.isGetAccessorDeclaration(node) || ts.isSetAccessorDeclaration(node))
     ) {
@@ -389,12 +389,7 @@ function keptName(node: FunctionNode): string | undefined {
         return node.name.text;
     }
     const parent = node.parent;
-    if (
-        parent !== undefined &&
-        ts.isVariableDeclaration(parent) &&
-        ts.isIdentifier(parent.name) &&
-        ts.isSourceFile(parent.parent.parent.parent)
-    ) {
+    if (ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name) && ts.isSourceFile(parent.parent.parent.parent)) {
         return parent.name.text;
     }
     return undefined;

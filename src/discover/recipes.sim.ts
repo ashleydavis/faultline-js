@@ -93,6 +93,82 @@ export function l(one: string | undefined, two: string | null, three: 1 | 2 | 3)
     }
 }
 
+// The types the reader answers with something of the run's own, and the ones written with no type
+// argument at all.
+export function theTypesTheRunSuppliesItself(injector: Injector, checklist: Checklist): void {
+    void injector;
+    void checklist;
+
+    // A parameter of one of the runtime module's own types, which the run fills itself. The module
+    // is named to the reader as the one file those types may be declared in, so a type of the same
+    // name declared anywhere else is an ordinary type.
+    const name = "/node_modules/faultline/index.ts";
+    const runtime = "export interface Injector { fail(a: string, b: string): void }\nexport interface Checklist { ticked(a: string): boolean }\n";
+    const held: Record<string, string> = {
+        "/held.ts": 'import type { Checklist, Injector } from "/node_modules/faultline/index.ts";\nexport function f(one: Injector, two: Checklist, three: AbortSignal): void { void one; void two; void three; }',
+        [name]: runtime,
+    };
+    const host: ts.CompilerHost = {
+        getSourceFile: (asked, language) => {
+            const own = held[asked];
+            if (own !== undefined) {
+                return ts.createSourceFile(asked, own, language, true);
+            }
+            const lib = ts.sys.readFile(asked);
+            return lib === undefined ? undefined : ts.createSourceFile(asked, lib, language, true);
+        },
+        getDefaultLibFileName: (asked) => ts.getDefaultLibFilePath(asked),
+        writeFile: () => undefined,
+        getCurrentDirectory: () => "/",
+        getCanonicalFileName: (asked) => asked,
+        useCaseSensitiveFileNames: () => true,
+        getNewLine: () => "\n",
+        fileExists: (asked) => held[asked] !== undefined || ts.sys.fileExists(asked),
+        readFile: (asked) => held[asked] ?? ts.sys.readFile(asked),
+    };
+    const program = ts.createProgram(Object.keys(held), { strict: true, target: ts.ScriptTarget.ES2022 }, host);
+    const context: RecipeContext = { checker: program.getTypeChecker(), runtimeFile: [name], root: "/" };
+    const found: Recipe[] = [];
+    const walk = (node: ts.Node): void => {
+        if (ts.isFunctionDeclaration(node)) {
+            for (const parameter of node.parameters) {
+                found.push(recipeFor(context, context.checker.getTypeAtLocation(parameter), parameter));
+            }
+        }
+        ts.forEachChild(node, walk);
+    };
+    walk(program.getSourceFile("/held.ts")!);
+    if (!found.some((one) => one.kind === "effect")) {
+        throw new Error("TheReaderSaidNoneOfThemIsTheRunsOwn");
+    }
+}
+
+// The collections written with no type argument, and a type name too long to print.
+export function theShapesWithNothingSaidAboutWhatTheyHold(injector: Injector, checklist: Checklist): void {
+    void injector;
+    void checklist;
+
+    const found = everyRecipe(`
+type Long = { a: string } | { b: string } | { c: string } | { d: string } | { e: string } | { f: string } | { g: string } | { h: string } | { i: string } | { j: string } | { k: string } | { l: string };
+export function a(one: Map<string, number>, two: Set<string>, three: Array<string>): void { void one; void two; void three; }
+export function b(one: unknown[], two: ReadonlyMap<string, number>, three: ReadonlySet<string>): void { void one; void two; void three; }
+export function c(one: Long): void { void one; }
+export function d(one: symbol, two: () => symbol): void { void one; void two; }
+`);
+    // An enum with one member, which is that member rather than a union of them.
+    everyRecipe("enum One { A = 1 }\nexport function a(one: One): void { void one; }");
+    everyRecipe('enum One { A = "a" }\nexport function a(one: One): void { void one; }');
+    // A name built out of another, which is none of the shapes the reader knows.
+    everyRecipe("type Named = `held-${string}`;\nexport function a(one: Named): void { void one; }");
+    everyRecipe("export function a(one: keyof { a: string; b: number }): void { void one; }");
+    // A type declared in the standard library rather than in the project, so the name it is found
+    // again by is written from a file outside the root.
+    everyRecipe("export function a(one: Promise<string>, two: WeakMap<object, string>): void { void one; void two; }");
+    if (found.length < 8) {
+        throw new Error("TheReaderFoundTooFewParameters");
+    }
+}
+
 // A type that refers to itself, which is what the cap on how deep a type is read is for.
 export function aTypeThatRefersToItself(injector: Injector, checklist: Checklist): void {
     void injector;

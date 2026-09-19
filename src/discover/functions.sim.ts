@@ -5,7 +5,7 @@
 
 import ts from "typescript";
 import type { Checklist, Injector } from "faultline";
-import { readFile, type FileFacts } from "./functions.ts";
+import { fileLabel, readFile, returnKeyOf, type FileFacts } from "./functions.ts";
 import type { RecipeContext } from "./recipes.ts";
 
 // Where the runtime module is declared for these, so a parameter of one of its types is told from a
@@ -121,6 +121,21 @@ export function neitherOfThose(a: string): string { return a; }
     if (found.invariants.length !== 1) {
         throw new Error("TheReaderFoundTheWrongNumberOfInvariants");
     }
+}
+
+// What the report calls a file, which is its path under the root when it is under one.
+export function whatTheReportCallsAFile(injector: Injector, checklist: Checklist): void {
+    void injector;
+    void checklist;
+
+    if (fileLabel("/project", "/project/src/held.ts") !== "src/held.ts") {
+        throw new Error("AFileUnderTheRootWasNotNamedByItsPathUnderIt");
+    }
+    if (fileLabel("/project", "/elsewhere/held.ts") !== "/elsewhere/held.ts") {
+        throw new Error("AFileOutsideTheRootWasCutShort");
+    }
+    fileLabel("/project", "C:\\project\\held.ts");
+    void returnKeyOf;
 }
 
 // A file with nothing in it, and one whose functions take the run's own types.
