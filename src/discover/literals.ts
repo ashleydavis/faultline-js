@@ -71,6 +71,7 @@ export function literalsIn(checker: ts.TypeChecker, source: ts.SourceFile): Lite
             take(node.expression, tested);
         }
         if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
+            // A `new` written with no brackets at all carries no argument list.
             for (const argument of node.arguments ?? []) {
                 take(argument, given);
             }

@@ -260,7 +260,8 @@ function asFactory(
     }
     return {
         key,
-        typeName: (returned.aliasSymbol ?? returned.getSymbol())?.getName() ?? key,
+        // The key was built from this type's symbol, so it has one and that symbol carries the name.
+        typeName: (returned.aliasSymbol ?? returned.getSymbol())!.getName(),
         file,
         exportName: info.reach.name,
         parameters: info.parameters,
@@ -470,7 +471,8 @@ export function returnKeyOf(
     if (key === undefined) {
         return undefined;
     }
-    return { key, name: (returned.aliasSymbol ?? returned.getSymbol())?.getName() ?? key };
+    // The key was built from this type's symbol, so it has one and that symbol carries the name.
+    return { key, name: (returned.aliasSymbol ?? returned.getSymbol())!.getName() };
 }
 
 // Where a path is written relative to, so two files never collide in the report.

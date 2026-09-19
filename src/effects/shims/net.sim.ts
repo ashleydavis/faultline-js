@@ -47,3 +47,47 @@ export async function everyWayAConnectionGoes(injector: Injector, checklist: Che
     net.createConnection(80).end();
 }
 
+// A server the code under test starts, which opens no socket and takes the connections the run
+// made up.
+export async function aServerTakingWhatTheRunMadeUp(injector: Injector, checklist: Checklist): Promise<void> {
+    void injector;
+    void checklist;
+
+    const subject = new RunSubject(13, "clean");
+    subject.events.holds(["type"], ["a line", "another line"]);
+    const held = runWith(subject);
+    try {
+        let taken = 0;
+        await new Promise<void>((settle) => {
+            const made = net.createServer((socket) => {
+                taken += 1;
+                socket.on("data", () => undefined);
+                socket.on("end", () => undefined);
+            });
+            made.on("listening", () => settle());
+            made.listen(0);
+        });
+        await Promise.resolve();
+        if (taken === 0) {
+            throw new Error("AServerTookNoConnectionAtAll");
+        }
+
+        // A server nobody is answering with, one whose handler throws on a connection, and one
+        // told it is up. Each is waited on, because a server says it is up a turn after it is
+        // asked to listen and the run would be over before it did.
+        await new Promise<void>((settle) => {
+            net.createServer().listen(0, () => settle());
+        });
+        await new Promise<void>((settle) => {
+            net.createServer(() => {
+                throw new Error("ThisHandlerThrowsOnPurpose");
+            })
+                .on("listening", () => settle())
+                .listen(0);
+        });
+        await Promise.resolve();
+    }
+    finally {
+        runWith(held);
+    }
+}

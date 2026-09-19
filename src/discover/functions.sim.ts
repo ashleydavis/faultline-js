@@ -107,6 +107,8 @@ import type { Checklist, Injector } from "/node_modules/faultline/index.ts";
 export interface Held { name: string }
 export class Made { held(): Held { return { name: "a" }; } }
 export function aFactory(): Held { return { name: "a" }; }
+export type AlsoHeld = { at: number };
+export function anAliasFactory(): AlsoHeld { return { at: 1 }; }
 export function alsoAFactory(at: number): Held { return { name: String(at) }; }
 export function aScenario(one: Injector, two: Checklist): void { void one; void two; }
 export function anInvariant(): void { return; }
@@ -148,4 +150,8 @@ export function theQuietCases(injector: Injector, checklist: Checklist): void {
     read('import type { Injector } from "/node_modules/faultline/index.ts";\nexport function f(one: Injector): void { void one; }');
     read("export function f(one: AbortSignal): void { void one; }");
     read("export class A { constructor() { void 0; } }\nexport class B extends A { }\n");
+    // A class written inside a function and one written without a name, neither of which an export
+    // reaches.
+    read("export function f() { class Inside { held(): number { return 1; } } return new Inside(); }\n");
+    read("export const made = class { held(): number { return 1; } };\n");
 }

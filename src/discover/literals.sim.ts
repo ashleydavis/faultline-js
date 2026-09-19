@@ -53,6 +53,8 @@ export function f(a: string, b: number, c: { held: string }, d: string[]): numbe
     if (d.includes("kept")) { return 9; }
     if (a.split("-").length === 2) { return 10; }
     if (a.replace("x", "y") === "z") { return 11; }
+    // A \`new\` written with no brackets at all, which carries no argument list to read.
+    void new Date;
     if (d[3] === "at") { return 12; }
     switch (a) {
         case "red": return 13;

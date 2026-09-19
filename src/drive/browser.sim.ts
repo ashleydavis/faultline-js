@@ -199,6 +199,18 @@ export async function drivingARealPage(injector: Injector, checklist: Checklist)
     }
 }
 
+// Driving on a machine with no package to drive a browser through, which says what to install.
+export async function drivingWithNoPackageToDriveThrough(injector: Injector, checklist: Checklist): Promise<void> {
+    void injector;
+    void checklist;
+
+    const model = { root: "/project", work: "/no-package", files: [], factories: [], scenarios: [], invariants: [], simModules: {}, unseen: [], seeds: [1], callBudget: 200 } as unknown as RunModel;
+    const done = await driveInBrowser(model, [], [], undefined, "a-package-no-machine-has");
+    if (done.broke === undefined || !done.broke.includes("install")) {
+        throw new Error("ARunWithNoPackageToDriveABrowserThroughDidNotSayWhatToInstall");
+    }
+}
+
 // Driving with a browser that will not start, which is what a machine with none installed does.
 export async function drivingWithNoBrowserToDriveIn(injector: Injector, checklist: Checklist): Promise<void> {
     void injector;

@@ -175,12 +175,18 @@ async function answerWith(page: Page, work: string): Promise<void> {
     });
 }
 
-// Loads Playwright, or says what to install when the project has none.
-async function chromiumFrom(): Promise<Chromium | undefined> {
+// The package a browser is driven through.
+export const browserPackage = "playwright";
+
+// Loads the package that drives a browser, or hands back nothing when the project has none.
+//
+// Which package is a parameter so that a run can drive both sides of it: a machine with the package
+// installed reaches the loading, and a name no machine has reaches what is said about a machine
+// without it. It is never passed anything but the name above by the tool itself.
+async function chromiumFrom(named: string): Promise<Chromium | undefined> {
     try {
         // Named through a variable so the compiler does not look for a package a project running
         // only in Node has no reason to install.
-        const named = "playwright";
         const loaded = (await import(named)) as unknown as { chromium: Chromium };
         return loaded.chromium;
     }
@@ -195,8 +201,9 @@ export async function driveInBrowser(
     units: Unit[],
     ticked: string[],
     executablePath: string | undefined,
+    named = browserPackage,
 ): Promise<BrowserResult> {
-    const chromium = await chromiumFrom();
+    const chromium = await chromiumFrom(named);
     if (chromium === undefined) {
         return {
             said: [],

@@ -71,6 +71,28 @@ export async function aServerListensOnNothing(injector: Injector, checklist: Che
         http.createServer(() => undefined).listen();
         net.createServer(() => undefined).listen(0, () => undefined).close();
         net.createServer().close(() => undefined).address();
+
+        // A server nobody is answering with, which takes the requests and the connections the run
+        // made up and has no handler to hand them to.
+        http.createServer().listen(0);
+        net.createServer().listen(0);
+
+        // A server told it is up, which is what a caller that waits to be told asks for.
+        await new Promise<void>((settle) => {
+            http.createServer(() => undefined).listen(0, () => settle());
+        });
+
+        // A handler that throws on one request stops that request and no more.
+        http.createServer(() => {
+            throw new Error("ThisHandlerThrowsOnPurpose");
+        }).listen(0);
+        net.createServer(() => {
+            throw new Error("ThisHandlerThrowsOnPurpose");
+        }).listen(0);
+
+        // A request aimed by host rather than by name, and one aimed by neither.
+        http.get({ host: "example.com" }, () => undefined);
+        http.get({}, () => undefined);
     });
 }
 

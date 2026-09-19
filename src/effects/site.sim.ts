@@ -6,7 +6,7 @@ import type { Checklist, Injector } from "faultline";
 import { callSite, placeIn, siteIn, withoutPrefix } from "./site.ts";
 
 // Every way a runtime writes a frame.
-export function everyShapeOfFrame(injector: Injector, checklist: Checklist): void {
+export function everyKindOfFrame(injector: Injector, checklist: Checklist): void {
     void injector;
     void checklist;
 
@@ -72,4 +72,22 @@ export function theDirectoryTakenOffTheFront(injector: Injector, checklist: Chec
         throw new Error("APlaceWasChangedWhenNoDirectoryWasNamed");
     }
     withoutPrefix("/tmp/faultline-abc/a.ts:1:1", "/tmp/faultline-abc/");
+}
+
+// A runtime that writes no stack at all, which is what one whose stack the project took over gives
+// back. A place read from it is empty rather than made up.
+export function aRuntimeThatWritesNoStack(injector: Injector, checklist: Checklist): void {
+    void injector;
+    void checklist;
+
+    const held = Error.prepareStackTrace;
+    Error.prepareStackTrace = () => undefined;
+    try {
+        if (callSite().length !== 0) {
+            throw new Error("APlaceWasReadFromAStackThatWasNotWritten");
+        }
+    }
+    finally {
+        Error.prepareStackTrace = held;
+    }
 }

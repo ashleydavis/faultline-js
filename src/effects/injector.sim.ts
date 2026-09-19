@@ -23,6 +23,14 @@ export function everyModeAnInjectorRunsIn(injector: Injector, checklist: Checkli
     if (clean.check("files") !== "missing") {
         throw new Error("TheFailureAScenarioAskedForWasNotHandedOut");
     }
+    // A failure asked for on one effect is not handed to another, and waits until its own is asked.
+    clean.fail("net", "refused");
+    if (clean.check("files") !== undefined) {
+        throw new Error("AFailureAskedForOnOneEffectWasHandedToAnother");
+    }
+    if (clean.check("net") !== "refused") {
+        throw new Error("TheFailureWaitingOnItsOwnEffectWasNotHandedOut");
+    }
     clean.fail("net", "refused");
     clean.clear();
     if (clean.check("net") !== undefined) {

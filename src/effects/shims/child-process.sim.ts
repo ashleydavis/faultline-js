@@ -49,7 +49,7 @@ export async function everyWayAProgramGoes(injector: Injector, checklist: Checkl
     void injector;
     void checklist;
 
-    const ways = [undefined, "missing", "denied", "failed", "on-error-stream"];
+    const ways = [undefined, "missing", "denied", "failed", "failed-quietly", "on-error-stream", "said-nothing"];
     await eachAsking(ways, (queue) => {
         queue();
         try {
@@ -135,6 +135,32 @@ export async function aForkedProgramSaysWhatItHasToSay(injector: Injector, check
             const quiet = child.fork("./b.mjs");
             quiet.on("close", () => settle());
         });
+    }
+    finally {
+        runWith(held);
+    }
+}
+
+// A forked program that never ends, which is what one stuck in a loop does. It says nothing and it
+// never exits, so it is started and left where it is rather than waited on.
+export async function aForkedProgramThatNeverEnds(injector: Injector, checklist: Checklist): Promise<void> {
+    void injector;
+    void checklist;
+
+    const subject = new RunSubject(13, "clean");
+    const held = runWith(subject);
+    try {
+        subject.injector.fail("process", "never-ends");
+        let ended = false;
+        const forked = child.fork("./a.mjs");
+        forked.on("close", () => {
+            ended = true;
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+        if (ended) {
+            throw new Error("AProgramThatNeverEndsEnded");
+        }
     }
     finally {
         runWith(held);

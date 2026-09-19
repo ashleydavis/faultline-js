@@ -126,6 +126,9 @@ const mostBuiltAround = 128;
 // one of those makes the runtime treat the whole as something it is not: a stand-in at `then` would
 // make awaiting it never finish, and one at `Symbol.iterator` would break every loop over it.
 export function standIn(answers: Answers = { values: [], properties: [], at: 0, given: new Map() }): unknown {
+    // Calling one hands back another, and so does building one with `new`. The function underneath
+    // is what is called: the proxy has no trap for either, because a trap doing the same thing as
+    // the function it wraps is the same code written twice.
     const held = function standingIn(): unknown {
         return standIn(answers);
     };
@@ -169,8 +172,6 @@ export function standIn(answers: Answers = { values: [], properties: [], at: 0, 
             return standIn(answers);
         },
         has: () => true,
-        apply: () => standIn(answers),
-        construct: () => standIn(answers) as object,
     });
 }
 
