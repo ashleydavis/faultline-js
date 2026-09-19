@@ -157,24 +157,51 @@ function runtimeFor(reached?: () => Promise<Set<string>>): { runtime: Runtime; s
     };
 }
 
-// One unit of each kind, over every function the model holds.
-export async function everyKindOfUnit(injector: Injector, checklist: Checklist): Promise<void> {
+// Every path the model holds, so a unit that asks what has run is told everything has and makes one
+// call rather than working through every value it could pass.
+const everything = async (): Promise<Set<string>> => new Set(file.paths.map((one) => one.name));
+
+// One call unit over every function the model holds.
+export async function aCallUnitOverEveryFunction(injector: Injector, checklist: Checklist): Promise<void> {
     void injector;
     void checklist;
 
-    const { runtime, said } = runtimeFor();
+    const { runtime, said } = runtimeFor(everything);
     const factories = await readFactories(runtime, model);
     for (let at = 0; at < functions.length; at += 1) {
-        for (const kind of ["call", "explore"] as const) {
-            const unit: Unit = { index: at, kind, seed: 1, faulting: at % 2 === 1, file: 0, fn: at };
-            if (!(await runUnit(runtime, model, unit, factories))) {
-                throw new Error(`TheRunStoppedOn_${functions[at]!.label}`);
-            }
+        const unit: Unit = { index: at, kind: "call", seed: 1, faulting: at % 2 === 1, file: 0, fn: at };
+        if (!(await runUnit(runtime, model, unit, factories))) {
+            throw new Error(`TheRunStoppedOn_${functions[at]!.label}`);
         }
     }
     if (!said.some((one) => one.type === "unit")) {
         throw new Error("TheDrivingSaidNothingAboutAnyUnit");
     }
+}
+
+// One exploring unit over every function the model holds.
+export async function anExploringUnitOverEveryFunction(injector: Injector, checklist: Checklist): Promise<void> {
+    void injector;
+    void checklist;
+
+    const { runtime } = runtimeFor(everything);
+    const factories = await readFactories(runtime, model);
+    for (let at = 0; at < functions.length; at += 1) {
+        const unit: Unit = { index: at, kind: "explore", seed: 1, faulting: false, file: 0, fn: at };
+        if (!(await runUnit(runtime, model, unit, factories))) {
+            throw new Error(`TheRunStoppedOn_${functions[at]!.label}`);
+        }
+    }
+}
+
+// A unit whose runtime cannot say what has run, which works through every value it could pass.
+export async function aUnitThatCannotAskWhatHasRun(injector: Injector, checklist: Checklist): Promise<void> {
+    void injector;
+    void checklist;
+
+    const { runtime } = runtimeFor();
+    await runUnit(runtime, model, { index: 0, kind: "call", seed: 1, faulting: false, file: 0, fn: 0 }, []);
+    await runUnit(runtime, model, { index: 0, kind: "explore", seed: 1, faulting: true, file: 0, fn: 2 }, []);
 }
 
 // A scenario that passes, one that says the answer is wrong, and one that is not there.

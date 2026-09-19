@@ -2,7 +2,7 @@
 // input factories and scenarios a sim file holds.
 
 import ts from "typescript";
-import { exportedAs } from "../build/emit.ts";
+import { exportedAs, privateHolder } from "../build/emit.ts";
 import { functionLabel, isFunctionNode, isReportedFunction, type FunctionNode } from "./names.ts";
 import { recipeFor, typeKeyOf, type Recipe, type RecipeContext } from "./recipes.ts";
 import { toPosix } from "./sources.ts";
@@ -244,7 +244,10 @@ function asFactory(
     file: string,
     info: FunctionInfo,
 ): FactoryInfo | undefined {
-    if (info.reach.how !== "export") {
+    if (info.reach.how !== "export" || info.reach.name.startsWith(`${privateHolder}.`)) {
+        // A sim file keeps helpers of its own, and the copy hands those out on a holder so a run
+        // can call them. They are not what the file offers the run: a scenario and an invariant are
+        // what the file itself exports.
         return undefined;
     }
     const returned = returnedType(context.checker, node);
@@ -307,7 +310,10 @@ function asScenarioOrInvariant(
     file: string,
     info: FunctionInfo,
 ): { kind: "scenario"; it: ScenarioInfo } | { kind: "invariant"; it: InvariantInfo } | undefined {
-    if (info.reach.how !== "export") {
+    if (info.reach.how !== "export" || info.reach.name.startsWith(`${privateHolder}.`)) {
+        // A sim file keeps helpers of its own, and the copy hands those out on a holder so a run
+        // can call them. They are not what the file offers the run: a scenario and an invariant are
+        // what the file itself exports.
         return undefined;
     }
     const it = {
