@@ -28,6 +28,14 @@ interface Outcome {
     // What starting the program threw, when it would not start.
     error?: Error;
 
+    // Whether the program ends without saying anything over the channel back. A caller that waits
+    // to be told how far the program got has to get past one that never says.
+    silent?: boolean;
+
+    // Whether the program never ends at all, which is what a program stuck in a loop does. It says
+    // nothing and it never exits, so a caller that waits for either waits for ever.
+    endless?: boolean;
+
     // What it printed on the output stream.
     out: string;
 
@@ -48,10 +56,19 @@ function outcomeFor(command: string): Outcome {
         return { error: new CodedError("EACCES", `spawn ${command} EACCES`), out: "", err: "", status: -1 };
     }
     if (failure === "failed") {
-        return { out: "", err: complained, status: 1 };
+        return { out: "", err: complained, status: 1, silent: true };
+    }
+    if (failure === "failed-quietly") {
+        return { out: "", err: "", status: 1, silent: true };
     }
     if (failure === "on-error-stream") {
         return { out: printed, err: complained, status: 0 };
+    }
+    if (failure === "said-nothing") {
+        return { out: "", err: "", status: 0, silent: true };
+    }
+    if (failure === "never-ends") {
+        return { out: "", err: "", status: 0, silent: true, endless: true };
     }
     return { out: printed, err: "", status: 0 };
 }
@@ -125,8 +142,16 @@ class ChildProcess extends EventEmitter {
     // What it ended with, once it has.
     readonly exitCode: number;
 
+    // Whether this program ends without saying anything over the channel back.
+    private readonly silent: boolean;
+
+    // Whether this program never ends.
+    private readonly endless: boolean;
+
     constructor(outcome: Outcome) {
         super();
+        this.silent = outcome.silent === true;
+        this.endless = outcome.endless === true;
         this.stdout = Readable.from([outcome.out]);
         this.stderr = Readable.from([outcome.err]);
         this.exitCode = outcome.status;
@@ -135,7 +160,17 @@ class ChildProcess extends EventEmitter {
                 this.emit("error", outcome.error);
                 return;
             }
-            this.sendMessages();
+            if (!this.silent) {
+                this.sendMessages();
+            }
+            if (this.endless) {
+                return;
+            }
+            if (outcome.err !== "") {
+                // A program writes to its error stream before it ends, so a caller that keeps what
+                // was written has it by the time it is told the program is over.
+                this.stderr.emit("data", Buffer.from(outcome.err));
+            }
             this.emit("exit", outcome.status, null);
             this.emit("close", outcome.status, null);
         });

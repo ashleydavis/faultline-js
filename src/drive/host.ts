@@ -10,7 +10,7 @@ import type { RunModel } from "../model.ts";
 import { mergeInto, type Taken } from "../coverage/v8.ts";
 import { countsFor, didRun, type Counts } from "../report/tally.ts";
 import { driveInBrowser } from "./browser.ts";
-import { functionKey, type FromDriver, type ScenarioFailed, type ToDriver, type Unit } from "./protocol.ts";
+import { functionKey, type FromDriver, type ScenarioFailed, type ToDriver, type Unit, type UnitDone } from "./protocol.ts";
 import { buildExploration, buildUnits } from "./units.ts";
 
 // What the driving came back with.
@@ -198,14 +198,7 @@ async function driveInPage(
     mergeInto(result.scripts, generation, done.scripts);
     for (const message of done.said) {
         if (message.type === "unit") {
-            result.stepped += message.stepped;
-            result.done += 1;
-            if (message.fn !== undefined) {
-                result.calls.set(message.fn, (result.calls.get(message.fn) ?? 0) + message.calls);
-                if (message.cannotBuild !== undefined && !result.cannotBuild.has(message.fn)) {
-                    result.cannotBuild.set(message.fn, message.cannotBuild);
-                }
-            }
+            tookUnit(result, message);
             onProgress(result.done, units.length);
             continue;
         }
@@ -217,6 +210,22 @@ async function driveInPage(
             result.broke = message.error;
             return;
         }
+    }
+}
+
+// Puts what a driver said about one unit into what the run came back with.
+//
+// A driver in a page and a driver in a process say the same thing about a unit and it is read the
+// same way, so it is read here rather than once for each.
+function tookUnit(result: DriveResult, message: UnitDone): void {
+    result.stepped += message.stepped;
+    result.done += 1;
+    if (message.fn === undefined) {
+        return;
+    }
+    result.calls.set(message.fn, (result.calls.get(message.fn) ?? 0) + message.calls);
+    if (message.cannotBuild !== undefined && !result.cannotBuild.has(message.fn)) {
+        result.cannotBuild.set(message.fn, message.cannotBuild);
     }
 }
 
@@ -248,12 +257,10 @@ function functionOf(model: RunModel, unit: Unit | undefined): string | undefined
     if (unit === undefined || unit.kind !== "call" || unit.file === undefined || unit.fn === undefined) {
         return undefined;
     }
-    const file = model.files[unit.file];
-    const held = file?.functions[unit.fn];
-    if (file === undefined || held === undefined) {
-        return undefined;
-    }
-    return functionKey(file.file, held.label);
+    // The list of work was built from this model, so the file and the function it names are both
+    // in it.
+    const file = model.files[unit.file]!;
+    return functionKey(file.file, file.functions[unit.fn]!.label);
 }
 
 // How one pass of the driver ended.
@@ -320,6 +327,12 @@ function runOnce(
         }
 
         child.on("message", (raw) => {
+            if (settled) {
+                // The driver was stopped and this pass has already said how it ended. A message
+                // still on its way across is that driver's last word about work this pass no longer
+                // owns, and taking it would put what it says into the next pass's answer.
+                return;
+            }
             const message = raw as FromDriver;
             if (message.type === "ready") {
                 started = true;
@@ -333,14 +346,7 @@ function runOnce(
             }
             if (message.type === "unit") {
                 waitingOn = message.index + 1;
-                result.stepped += message.stepped;
-                result.done += 1;
-                if (message.fn !== undefined) {
-                    result.calls.set(message.fn, (result.calls.get(message.fn) ?? 0) + message.calls);
-                    if (message.cannotBuild !== undefined && !result.cannotBuild.has(message.fn)) {
-                        result.cannotBuild.set(message.fn, message.cannotBuild);
-                    }
-                }
+                tookUnit(result, message);
                 onProgress(result.done, total);
                 watch();
                 return;
@@ -355,7 +361,13 @@ function runOnce(
                 finish({ how: "broke" });
                 return;
             }
-            finish({ how: "finished" });
+            if (message.type === "finished") {
+                finish({ how: "finished" });
+                return;
+            }
+            // A driver saying something this version of the tool has no name for is left alone. It
+            // used to be taken as the driver having finished, and one such message ended a pass
+            // with every unit after it undriven.
         });
 
         let saidOnError = "";

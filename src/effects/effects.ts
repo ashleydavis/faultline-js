@@ -197,6 +197,11 @@ export class RunEvents {
     // Each message puts one value the file tests against under one property it reads, and fills the
     // rest in from the same values. One property is left out of each, because a handler that fills
     // in a default for a property it was not sent is reached no other way.
+    //
+    // The turn moves on with every call, so a caller that starts a second server or a second
+    // program is sent a different lot. A handler that stops listening at the first message it knows
+    // would otherwise hear the same first message every time, and every branch after that one would
+    // go unreached however many times it was called.
     messages(): unknown[] {
         const out: unknown[] = [];
         if (this.properties.length === 0 || this.values.length === 0) {
@@ -215,6 +220,7 @@ export class RunEvents {
             one[this.properties[named]!] = this.values[at % this.values.length];
             out.push(one);
         }
+        this.turn += 1;
         return out;
     }
 }
