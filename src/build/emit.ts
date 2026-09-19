@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
+import { resolutionHost } from "./disk.ts";
 import { shimFor } from "../effects/shims/index.ts";
 import { realNow } from "../effects/globals.ts";
 import { pathsIn, type PathSite, type Unseen } from "../discover/paths.ts";
@@ -337,7 +338,7 @@ function pointAt(
         // anything.
         return pathToFileURL(shim).href;
     }
-    const resolved = ts.resolveModuleName(specifier, originalFile, options.options, ts.sys).resolvedModule;
+    const resolved = ts.resolveModuleName(specifier, originalFile, options.options, resolutionHost).resolvedModule;
     const target = resolved?.resolvedFileName;
     if (target === undefined) {
         // A specifier that resolves to no file is a package, and the link at the top of the work

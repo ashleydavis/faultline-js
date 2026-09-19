@@ -22,6 +22,16 @@ import { describe, readFactories, runUnit, type Runtime } from "./work.ts";
 // The disk is only ever read here. Every write a run makes is held in the run's own tree, so a
 // project being measured is read and never changed.
 const onThisDisk: Beneath = {
+    kind(path) {
+        try {
+            const held = fs.statSync(path);
+            return held.isDirectory() ? "directory" : "file";
+        }
+        catch {
+            return undefined;
+        }
+    },
+
     file(path) {
         try {
             if (!fs.statSync(path).isFile()) {

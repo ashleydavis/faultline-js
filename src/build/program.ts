@@ -6,6 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
+import { configSystem, projectHost } from "./disk.ts";
 
 // A program over the files a run measures, and the options it was built with.
 export interface BuiltProgram {
@@ -35,15 +36,15 @@ export const defaultOptions: ts.CompilerOptions = {
 
 // Reads the project's `tsconfig.json`, or hands back the defaults above when it has none.
 export function optionsFor(root: string): ts.CompilerOptions {
-    const configFile = ts.findConfigFile(root, ts.sys.fileExists, "tsconfig.json");
+    const configFile = ts.findConfigFile(root, configSystem.fileExists, "tsconfig.json");
     if (configFile === undefined) {
         return { ...defaultOptions };
     }
-    const read = ts.readConfigFile(configFile, ts.sys.readFile);
+    const read = ts.readConfigFile(configFile, configSystem.readFile);
     if (read.error !== undefined) {
         return { ...defaultOptions };
     }
-    const parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, path.dirname(configFile));
+    const parsed = ts.parseJsonConfigFileContent(read.config, configSystem, path.dirname(configFile));
     return {
         ...parsed.options,
         // A run never writes the project's own output, so whatever the project emits is turned off
@@ -60,7 +61,7 @@ export function optionsFor(root: string): ts.CompilerOptions {
 // Builds the program over `files`, which are absolute paths.
 export function buildProgram(root: string, files: string[]): BuiltProgram {
     const options = optionsFor(root);
-    const program = ts.createProgram({ rootNames: files, options });
+    const program = ts.createProgram({ rootNames: files, options, host: projectHost(options) });
     return { program, checker: program.getTypeChecker(), options };
 }
 

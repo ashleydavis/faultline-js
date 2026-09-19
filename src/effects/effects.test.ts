@@ -159,11 +159,12 @@ test("bytes come back as the text encoded", async () => {
     assert.deepEqual(await files.readBytes("/b.txt"), new Uint8Array([97, 98]));
 });
 
-test("a file that was removed no longer holds what it held", async () => {
+test("a file that was removed is gone, and reading it says so the way the runtime says it", async () => {
     const files = new RunFiles(clean());
     await files.write("/c.txt", "x");
     await files.remove("/c.txt");
-    assert.notEqual(await files.read("/c.txt"), "x");
+    await assert.rejects(files.read("/c.txt"), (thrown: CodedError) => thrown.code === "ENOENT");
+    assert.equal(await files.exists("/c.txt"), false);
 });
 
 test("a removal the injector fails says so with the code a missing file has", async () => {

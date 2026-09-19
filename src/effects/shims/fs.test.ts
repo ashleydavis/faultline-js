@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { runWith } from "../current.ts";
+import type { CodedError } from "../effects.ts";
 import { RunSubject } from "../subject.ts";
 import files from "./fs.ts";
 
@@ -70,11 +71,11 @@ test("an append adds to the end of what was there", async () => {
     });
 });
 
-test("a file taken away no longer holds what it held", async () => {
+test("a file taken away is gone, and reading it says so the way the runtime says it", async () => {
     await whileRunning(async () => {
-        const before = files.readFileSync("/notes.txt", "utf8");
         files.unlinkSync("/notes.txt");
-        assert.notEqual(files.readFileSync("/notes.txt", "utf8"), before);
+        assert.throws(() => files.readFileSync("/notes.txt", "utf8"), (thrown: CodedError) => thrown.code === "ENOENT");
+        assert.equal(files.existsSync("/notes.txt"), false);
     });
 });
 

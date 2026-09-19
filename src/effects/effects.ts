@@ -133,6 +133,10 @@ export class RunNet {
 // is also bundled for a browser and a browser has no disk. Node's driver puts the real one in and
 // a browser run leaves it out.
 export interface Beneath {
+    // What is at one path on the disk, or nothing when the disk has neither a file nor a directory
+    // there.
+    kind(path: string): "file" | "directory" | undefined;
+
     // What the disk holds at one path, or nothing when it holds no file there.
     file(path: string): string | undefined;
 
@@ -254,6 +258,7 @@ export class RunFiles {
         if (held !== undefined) {
             return held;
         }
+        this.insist(at, "open");
         return this.onDisk(at) ?? this.unasked;
     }
 
@@ -267,6 +272,14 @@ export class RunFiles {
             return undefined;
         }
         return beneath?.file(at);
+    }
+
+    // Throws the way the runtime throws for a path that is not there.
+    private insist(at: string, operation: string): void {
+        if (this.isThere(at)) {
+            return;
+        }
+        throw new CodedError("ENOENT", `ENOENT: no such file or directory, ${operation} '${at}'`);
     }
 
     // What the disk holds under one directory, as names, or nothing when it has no directory there.
@@ -296,8 +309,36 @@ export class RunFiles {
         }
     }
 
-    // Whether a file or a directory is there. Everything is, unless the injector fails this call,
-    // and a failure answers no rather than throwing because that is what the runtime does.
+    // Whether one path is there at all.
+    //
+    // A path this run was written to is there, and so is one the disk has. A path neither has is
+    // there only when the disk has no directory above it: a run makes up the paths it passes, and a
+    // made up path names a tree that is not on this machine, where every path the code under test
+    // asks about is one it would have found.
+    //
+    // A path inside a directory the disk does have is a real path the project does not have.
+    // Saying that one was there had the compiler read a TypeScript file at every name it looked
+    // for and find a settings file.
+    private isThere(at: string): boolean {
+        if (this.contents.has(at) || this.directories.has(at)) {
+            return true;
+        }
+        if (this.removed.has(at)) {
+            return false;
+        }
+        if (beneath === undefined) {
+            return true;
+        }
+        if (beneath.kind(at) !== undefined) {
+            return true;
+        }
+        const cut = at.lastIndexOf("/");
+        const above = cut <= 0 ? "/" : at.slice(0, cut);
+        return beneath.kind(above) !== "directory";
+    }
+
+    // Whether a file or a directory is there. A failure the injector asked for answers no rather
+    // than throwing, because that is what the runtime does.
     existsNow(path: string): boolean {
         try {
             this.refuse(path, "stat");
@@ -305,13 +346,14 @@ export class RunFiles {
         catch {
             return false;
         }
-        return true;
+        return this.isThere(clean(path));
     }
 
     // What one directory holds, as names rather than paths.
     listNow(path: string): string[] {
         this.refuse(path, "scandir");
         const at = clean(path);
+        this.insist(at, "scandir");
         const prefix = at === "/" ? "/" : `${at}/`;
         const names = new Set<string>(this.namesOnDisk(at) ?? []);
         for (const held of [...this.contents.keys(), ...this.directories]) {
@@ -357,13 +399,14 @@ export class RunFiles {
         if (this.directories.has(at)) {
             return { isFile: false, isDirectory: true, size: 0 };
         }
-        if (this.namesOnDisk(at) !== undefined) {
+        if (beneath?.kind(at) === "directory") {
             return { isFile: false, isDirectory: true, size: 0 };
         }
         const fromDisk = this.onDisk(at);
         if (fromDisk !== undefined) {
             return { isFile: true, isDirectory: false, size: fromDisk.length };
         }
+        this.insist(at, "stat");
         // A path the run was never told about is a file holding what a read of it gives back.
         return { isFile: true, isDirectory: false, size: this.unasked.length };
     }
