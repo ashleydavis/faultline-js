@@ -378,7 +378,10 @@ export class ValueMaker {
             buildable.push(one);
         }
         if (buildable.length === 0) {
-            throw new CannotBuild(options.map((one) => one.kind).join(" | "));
+            // Every option of the union names a type the run cannot build. The names are what the
+            // line asking for a factory prints, so one of each rather than one per option: a union
+            // of two hundred nodes of a compiler read as "unknown" two hundred times over.
+            throw new CannotBuild([...new Set(options.map((one) => (one.kind === "unknown" ? one.text : one.kind)))].join(" | "));
         }
         // Worked through by turn rather than drawn from. A union of one of three things is three
         // draws away from covering all of it, and a parameter of a compiler's own node type is a

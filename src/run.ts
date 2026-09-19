@@ -7,6 +7,7 @@ import { emitDriver } from "./drive/browser.ts";
 import { buildProgram, isModuleProject, stoppingErrors } from "./build/program.ts";
 import { readFile } from "./discover/functions.ts";
 import { literalsIn } from "./discover/literals.ts";
+import { realNow } from "./effects/globals.ts";
 import type { RecipeContext } from "./discover/recipes.ts";
 import { simFileFor, walkSources } from "./discover/sources.ts";
 import { drive } from "./drive/host.ts";
@@ -40,7 +41,7 @@ export type Say = (text?: string) => void;
 
 // Runs once.
 export async function run(options: Options, say: Say, progress: Say): Promise<RunResult> {
-    const startedAt = Date.now();
+    const startedAt = realNow();
     const root = options.root;
 
     const where = options.browser ? " in a browser" : "";
@@ -225,7 +226,7 @@ export async function run(options: Options, say: Say, progress: Say): Promise<Ru
         found: walked.sources.length,
         skipped: walked.skipped,
         reportFile,
-        took: Date.now() - startedAt,
+        took: realNow() - startedAt,
         all: options.all,
     });
 

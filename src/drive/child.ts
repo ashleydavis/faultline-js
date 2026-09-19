@@ -8,7 +8,7 @@ import inspector from "node:inspector";
 import { pathToFileURL } from "node:url";
 import { addInto, type ScriptCoverage } from "../coverage/v8.ts";
 import { startDriving } from "../effects/current.ts";
-import { installGlobals } from "../effects/globals.ts";
+import { installGlobals, realNow } from "../effects/globals.ts";
 import type { FileModel, RunModel } from "../model.ts";
 import { Copies, countsIn, didRun } from "../report/tally.ts";
 import type { FromDriver, ToDriver, Unit } from "./protocol.ts";
@@ -70,7 +70,7 @@ function runtimeFor(model: RunModel, ticked: Set<string>): Runtime {
         load: async (file) => (await import(pathToFileURL(file).href)) as Record<string, unknown>,
         say,
         sendCoverage: async (force) => {
-            const now = Date.now();
+            const now = realNow();
             if (!force && now - lastSent < sendEvery) {
                 return;
             }

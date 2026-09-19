@@ -153,3 +153,23 @@ test("a type from outside the project carries no key, so no factory is looked fo
     made.remove();
     assert.equal(key, undefined);
 });
+
+test("a primitive nested deeply is still read as that primitive", () => {
+    // The cap on how deep a type is read used to come first, so a string nested deeply enough was
+    // read as a type the run cannot build and asked for a test input factory for a string.
+    const deep = "export interface A { b: B }\ninterface B { c: C }\ninterface C { d: D }\ninterface D { e: E }\ninterface E { f: F }\ninterface F { g: G }\ninterface G { h: H }\ninterface H { held: string }\nexport function f(a: A) { void a; }";
+    assert.ok(!JSON.stringify(recipeOf(deep)).includes("\"unknown\""), JSON.stringify(recipeOf(deep)));
+});
+
+test("a type that refers to itself stops with a value the run can build", () => {
+    const held = recipeOf("export interface Node { held: Node | null }\nexport function f(n: Node) { void n; }");
+    assert.ok(!JSON.stringify(held).includes('"unknown"'), JSON.stringify(held).slice(0, 300));
+});
+
+test("an enum of numbers is read as a number", () => {
+    assert.deepEqual(recipeOf("enum Kind { A = 1, B = 2 }\nexport function f(k: Kind) { void k; }"), { kind: "number" });
+});
+
+test("an enum of strings is read as a string", () => {
+    assert.deepEqual(recipeOf('enum Kind { A = "a", B = "b" }\nexport function f(k: Kind) { void k; }'), { kind: "string" });
+});

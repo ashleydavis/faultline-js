@@ -8,6 +8,13 @@
 
 import { nowRunning } from "./current.ts";
 
+// The machine's own clock, held from before anything was replaced.
+//
+// The tool times itself, and a run measuring this very file loads a copy of it which replaces the
+// clock of the process the driver is in. The driver reading the replaced one then gets whatever the
+// code under test was given, and a made up clock that throws takes the whole run down with it.
+export const realNow = Date.now.bind(Date);
+
 // What was there before, kept so a replacement can fall through to it and so a run can put the
 // runtime back as it found it.
 interface Held {

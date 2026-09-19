@@ -101,10 +101,6 @@ export interface RecipeContext {
 export function recipeFor(context: RecipeContext, type: ts.Type, at: ts.Node, depth = 0): Recipe {
     const checker = context.checker;
 
-    if (depth > deepestRecipe) {
-        return { kind: "unknown", text: nameOf(checker, type) };
-    }
-
     const flags = type.flags;
     if (flags & ts.TypeFlags.Any) {
         return { kind: "any" };
@@ -144,6 +140,32 @@ export function recipeFor(context: RecipeContext, type: ts.Type, at: ts.Node, de
     }
     if (flags & ts.TypeFlags.ESSymbolLike) {
         return { kind: "unknown", text: "symbol" };
+    }
+    // An enum is a number or a string, whichever its members are.
+    //
+    // Reading it as the union of its members was tried and taken out: a compiler's own kind of
+    // syntax has three hundred and fifty of them, and writing that union down everywhere one is
+    // mentioned made the run's own description too big to write out at all. The members that
+    // matter are the ones the file being measured names, and those are read out of the file and
+    // handed to the run whatever the type says.
+    if (flags & ts.TypeFlags.EnumLike) {
+        return type.isUnion() && type.types.some((one) => one.isStringLiteral()) ? { kind: "string" } : { kind: "number" };
+    }
+
+    // Everything above holds one value or is a value of its own, and reading it costs nothing
+    // whatever it is nested inside. Everything below reads the types inside a type, and that is
+    // what stops on a type that refers to itself.
+    //
+    // The cap used to come first. A `string` or a `"export"` nested deeply enough was then read as
+    // a type the run cannot build, and a union of nothing but those asked for a test input factory
+    // for a string.
+    //
+    // It stops with an empty object rather than with a type the run cannot build. A type that
+    // refers to itself, such as a recipe holding recipes, had every option of its union read as
+    // unbuildable at the cap and asked for a factory that would make no difference: what is too
+    // deep to read is too deep for the branch to turn on.
+    if (depth > deepestRecipe) {
+        return { kind: "object", properties: [] };
     }
     if (flags & ts.TypeFlags.TypeParameter) {
         const constraint = checker.getBaseConstraintOfType(type);

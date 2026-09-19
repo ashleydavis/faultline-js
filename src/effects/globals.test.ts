@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { runWith } from "./current.ts";
-import { installGlobals, removeGlobals } from "./globals.ts";
+import { installGlobals, realNow, removeGlobals } from "./globals.ts";
 import { RunSubject } from "./subject.ts";
 
 // Runs `work` with one run in flight and the globals replaced, and puts the runtime back after.
@@ -108,5 +108,21 @@ test("a store a page keeps things in is one a run owns", () => {
     }
     finally {
         delete global.localStorage;
+    }
+});
+
+test("the machine's own clock is held from before anything was replaced", () => {
+    // A run measuring the file that replaces the globals loads a copy of it, and that copy replaces
+    // the clock of the process the driver is in. The driver times itself, and reading the replaced
+    // clock got it whatever the code under test was given.
+    installGlobals();
+    const held = runWith(new RunSubject(7, "clean"));
+    try {
+        assert.equal(Date.now(), 1704067200000);
+        assert.notEqual(realNow(), 1704067200000);
+    }
+    finally {
+        runWith(held);
+        removeGlobals();
     }
 });
