@@ -153,6 +153,62 @@ export function readsBeneath(reader: Beneath | undefined): void {
     beneath = reader;
 }
 
+// How many messages a replacement sends a callback it was handed. A file that names hundreds of
+// values would have every call send hundreds of messages, and the run works round them a different
+// way each turn, so what one call misses the next one sends.
+const mostMessages = 48;
+
+// What a replaced module sends a callback the code under test handed it.
+//
+// A project that registers a handler for a message, a connection or a chunk is handed none by a
+// replacement that starts nothing, so the code inside the handler never runs at all. These are what
+// the replacements send instead. Each one is built from what the file being measured reads off its
+// values and what its own comparisons test against, so a handler that switches on a tag is sent
+// every tag the file names.
+export class RunEvents {
+    // The property names the file being measured reads off its values.
+    private properties: string[] = [];
+
+    // The values that file's own comparisons test against.
+    private values: (string | number | boolean)[] = [];
+
+    // Which turn this is, so two calls in one run are sent different messages.
+    private turn = 0;
+
+    // Says what the file being measured reads and what it tests against.
+    holds(properties: string[], values: (string | number | boolean)[], turn = 0): void {
+        this.properties = properties;
+        this.values = values;
+        this.turn = turn;
+    }
+
+    // The messages one call sends.
+    //
+    // Each message puts one value the file tests against under one property it reads, and fills the
+    // rest in from the same values. One property is left out of each, because a handler that fills
+    // in a default for a property it was not sent is reached no other way.
+    messages(): unknown[] {
+        const out: unknown[] = [];
+        if (this.properties.length === 0 || this.values.length === 0) {
+            return out;
+        }
+        for (let at = 0; at < mostMessages; at += 1) {
+            const named = (at + this.turn) % this.properties.length;
+            const without = (at + this.turn + 1) % this.properties.length;
+            const one: Record<string, unknown> = {};
+            for (let which = 0; which < this.properties.length; which += 1) {
+                if (which === without && which !== named) {
+                    continue;
+                }
+                one[this.properties[which]!] = this.values[(which + at) % this.values.length];
+            }
+            one[this.properties[named]!] = this.values[at % this.values.length];
+            out.push(one);
+        }
+        return out;
+    }
+}
+
 // A file system a run owns. Every write is held in memory and no write reaches the disk, so no run
 // can write into the repository it is measuring.
 //

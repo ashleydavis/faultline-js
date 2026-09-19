@@ -69,11 +69,15 @@ export async function run(options: Options, say: Say, progress: Say): Promise<Ru
     // that file's scenarios and no others, so narrowing never drags in a scenario for code the run
     // is not looking at.
     const wantedSims = new Map<string, string>();
+
+    // The source file each sim file sits beside, which is the file its scenarios call into.
+    const besideOf = new Map<string, string>();
     for (const one of wanted) {
         const beside = simFileFor(one.file);
         const found = walked.sims.get(beside);
         if (found !== undefined) {
             wantedSims.set(beside, found);
+            besideOf.set(beside, one.file);
         }
     }
     const simFiles = [...wantedSims.values()];
@@ -139,7 +143,7 @@ export async function run(options: Options, say: Say, progress: Say): Promise<Ru
         const facts = readFile(context, source, simFile);
         factories.push(...facts.factories);
         for (const scenario of facts.scenarios) {
-            scenarios.push({ ...scenario, module: where });
+            scenarios.push({ ...scenario, module: where, beside: besideOf.get(simFile) });
         }
         for (const invariant of facts.invariants) {
             invariants.push({ ...invariant, module: where });

@@ -347,6 +347,7 @@ async function explore(
 
     const watching = new RunSubject(unit.seed, "recording", model.work);
     watching.files.holds(file.properties, file.tests);
+    watching.events.holds(file.properties, file.tests);
     try {
         await callOnce(new ValueMaker(watching, factories, 0, file), module, held, file.classes, file.functions);
         calls += 1;
@@ -377,6 +378,7 @@ async function explore(
             }
             const subject = new RunSubject(unit.seed, "exploring", model.work);
             subject.files.holds(file.properties, file.tests, at);
+            subject.events.holds(file.properties, file.tests, at);
             subject.injector.explore(place, failure);
             try {
                 const answer = await callOnce(new ValueMaker(subject, factories, at, file), module, held, file.classes, file.functions);
@@ -417,12 +419,30 @@ function addPlaces(places: string[], recorded: Point[]): void {
     }
 }
 
-// Says what a file the run was never told about holds, built from what the file being measured
-// reads off its values. Code that parses a settings file and reads a field off it finds that field.
-function tellTheFiles(subject: RunSubject, model: RunModel, unit: Unit): void {
-    const file = unit.file === undefined ? undefined : model.files[unit.file];
+// The file a unit is exercising: the one whose function it calls, or, for a unit that runs a
+// scenario, the one that scenario's sim file sits beside. A scenario calls the code in that file,
+// so what it reaches turns on the same values.
+function fileOfUnit(model: RunModel, unit: Unit): FileModel | undefined {
+    if (unit.file !== undefined) {
+        return model.files[unit.file];
+    }
+    const scenario = unit.scenario === undefined ? undefined : model.scenarios[unit.scenario];
+    if (scenario === undefined) {
+        return undefined;
+    }
+    return model.files.find((one) => one.file === scenario.beside);
+}
+
+// Says what the file being measured reads off its values and what its own comparisons test against.
+//
+// A file the run was never told about holds those properties, so code that parses a settings file
+// and reads a field off it finds that field. A message a replaced module sends carries them too, so
+// a handler that switches on a tag is sent every tag the file names.
+function tellWhatTheFileNames(subject: RunSubject, model: RunModel, unit: Unit): void {
+    const file = fileOfUnit(model, unit);
     if (file !== undefined) {
         subject.files.holds(file.properties, file.tests);
+        subject.events.holds(file.properties, file.tests);
     }
 }
 
@@ -469,7 +489,7 @@ async function stillToRun(runtime: Runtime, file: FileModel, wanted: PathSite[])
 // would bury it.
 export async function runUnit(runtime: Runtime, model: RunModel, unit: Unit, factories: CallableFactory[]): Promise<boolean> {
     const subject = new RunSubject(unit.seed, unit.faulting ? "faulting" : "clean");
-    tellTheFiles(subject, model, unit);
+    tellWhatTheFileNames(subject, model, unit);
 
     if (unit.kind === "scenario") {
         const scenario = model.scenarios[unit.scenario!]!;

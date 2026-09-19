@@ -135,9 +135,15 @@ class ChildProcess extends EventEmitter {
                 this.emit("error", outcome.error);
                 return;
             }
+            this.sendMessages();
             this.emit("exit", outcome.status, null);
             this.emit("close", outcome.status, null);
         });
+    }
+
+    // What this program said before it ended. A program started with no channel back says nothing.
+    protected sendMessages(): void {
+        return;
     }
 
     // Stops the program, which stops nothing because none was started.
@@ -150,19 +156,46 @@ export function spawn(command: string): ChildProcess {
     return new ChildProcess(outcomeFor(command));
 }
 
+// One started program with a channel back, as `fork` hands it back.
+//
+// A caller that forks registers a handler for a message and does its work inside it. A program that
+// started nothing and said nothing left that handler unrun, so the code that reads what a child
+// says was never exercised at all. This says what the run made up instead.
+class ForkedProcess extends ChildProcess {
+    // Whether the channel is open, which it is until the caller closes it.
+    connected = true;
+
+    // Sends one message to a program that is not there, which takes it.
+    send(): boolean {
+        return true;
+    }
+
+    // Closes the channel.
+    disconnect(): void {
+        this.connected = false;
+    }
+
+    protected override sendMessages(): void {
+        for (const message of nowRunning()?.events.messages() ?? []) {
+            if (this.listenerCount("message") === 0) {
+                return;
+            }
+            try {
+                this.emit("message", message);
+            }
+            catch {
+                // A handler that throws on one made up message stops that message and no more. The
+                // paths it took before it threw are the ones this is after, and each message after
+                // it has paths of its own to reach.
+            }
+        }
+    }
+}
+
 // Starts another copy of the runtime. It starts none: the real one would start a process per call,
-// and a run makes hundreds. It answers the way a started one does and takes messages that go
-// nowhere.
+// and a run makes hundreds. It answers the way a started one does and says what the run made up.
 export function fork(module: string): ChildProcess {
-    const child = new ChildProcess(outcomeFor(module)) as ChildProcess & {
-        send: (message: unknown) => boolean;
-        connected: boolean;
-        disconnect: () => void;
-    };
-    child.send = () => true;
-    child.connected = true;
-    child.disconnect = () => undefined;
-    return child;
+    return new ForkedProcess(outcomeFor(module));
 }
 
 export function spawnSync(command: string): { status: number; stdout: string; stderr: string; error?: Error } {

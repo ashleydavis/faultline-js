@@ -3,10 +3,12 @@
 // What these answer turns on a run and on what V8 counted over it, neither of which is a made up
 // value.
 
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { Checklist, Injector } from "faultline";
 import type { FileModel, RunModel } from "../model.ts";
 import type { FunctionInfo } from "../discover/functions.ts";
-import { driverBeside, startupBudget, tickedNames, unreachedFunctions } from "./host.ts";
+import { drive, driverBeside, startupBudget, tickedNames, unreachedFunctions } from "./host.ts";
 import type { Counts } from "../report/tally.ts";
 
 // One function of the model.
@@ -82,13 +84,64 @@ export function howLongStartingUpIsAllowed(injector: Injector, checklist: Checkl
     }
 }
 
-// Where the driver sits beside the tool, which is the TypeScript in a clone and the built
-// JavaScript in an installed copy.
+// Puts a driver where this copy of the tool looks for one, and says where that is.
+//
+// The driver sits beside the module that starts it. A copy of the tool has no driver beside it, so
+// one is written there, and the one written never runs: the module that forks is replaced while a
+// run is measuring.
+function driverWritten(): string {
+    const where = fileURLToPath(new URL("./child.ts", import.meta.url));
+    fs.writeFileSync(where, "");
+    return where;
+}
+
+// Where the driver sits beside the tool, and what is said when it sits nowhere.
 export function whereTheDriverSits(injector: Injector, checklist: Checklist): void {
     void injector;
     void checklist;
 
-    if (driverBeside().length === 0) {
-        throw new Error("TheDriverWasNotFoundBesideTheTool");
+    const where = driverWritten();
+    if (driverBeside() !== where) {
+        throw new Error("TheDriverWasNotFoundWhereItWasPut");
+    }
+
+    fs.rmSync(where);
+    let said = "";
+    try {
+        driverBeside();
+    }
+    catch (thrown) {
+        said = (thrown as Error).message;
+    }
+    if (!said.includes("not found")) {
+        throw new Error("ACopyWithNoDriverBesideItDidNotSaySo");
+    }
+}
+
+// One list of work driven from end to end, over a driver that answers the way a run makes up.
+export async function oneListOfWorkDriven(injector: Injector, checklist: Checklist): Promise<void> {
+    void injector;
+    void checklist;
+
+    driverWritten();
+    let told = 0;
+    const result = await drive(model, "/work/model.json", () => {
+        told += 1;
+    });
+    if (result.rounds < 1) {
+        throw new Error("TheDrivingCameBackHavingDrivenNoRound");
+    }
+    void told;
+}
+
+// A driver that will not start at all, which is what a machine with no room for a process does.
+export async function aDriverThatWillNotStart(injector: Injector, checklist: Checklist): Promise<void> {
+    void checklist;
+
+    driverWritten();
+    injector.fail("process", "missing");
+    const result = await drive(model, "/work/model.json", () => undefined);
+    if (result.broke === undefined) {
+        throw new Error("ADriverThatWouldNotStartWasNotReported");
     }
 }

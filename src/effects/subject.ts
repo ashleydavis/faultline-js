@@ -1,7 +1,7 @@
 // What a run hands a scenario, and what it builds effect parameters from.
 
 import type { Checklist } from "../runtime/index.ts";
-import { RunClock, RunFiles, RunNet, RunWriter } from "./effects.ts";
+import { RunClock, RunEvents, RunFiles, RunNet, RunWriter } from "./effects.ts";
 import { RunInjector, type Mode } from "./injector.ts";
 import { SeededRng } from "./random.ts";
 import { callSite } from "./site.ts";
@@ -29,6 +29,9 @@ export class RunSubject {
     // This run's writer.
     readonly writer: RunWriter;
 
+    // What this run sends a callback the code under test handed a replaced module.
+    readonly events: RunEvents;
+
     // Builds every effect from one seed. Two subjects built with the same seed and the same mode
     // answer identically, and that is how a run is replayed.
     //
@@ -41,6 +44,7 @@ export class RunSubject {
         this.net = new RunNet(this.injector, this.rng);
         this.files = new RunFiles(this.injector);
         this.writer = new RunWriter(this.injector);
+        this.events = new RunEvents();
     }
 }
 

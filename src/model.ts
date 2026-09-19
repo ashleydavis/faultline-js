@@ -50,8 +50,9 @@ export interface RunModel {
     // The test input factories every sim file holds, put together.
     factories: FactoryInfo[];
 
-    // The scenarios every sim file holds, put together.
-    scenarios: (ScenarioInfo & { module: string })[];
+    // The scenarios every sim file holds, put together. `beside` is the source file the sim file
+    // sits beside, which is the file the scenario calls into.
+    scenarios: (ScenarioInfo & { module: string; beside?: string })[];
 
     // The invariants every sim file holds, put together. Each one is checked after every unit of
     // work, so a run says which call broke it rather than only that something did.
