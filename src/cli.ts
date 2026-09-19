@@ -15,7 +15,9 @@ export async function main(argv: string[], cwd: string): Promise<number> {
         options = readOptions(argv, cwd);
     }
     catch (thrown) {
-        process.stderr.write(`${thrown instanceof Error ? thrown.message : String(thrown)}\n`);
+        // Reading the options throws an Error and throws nothing else, so its message is what there
+        // is to print.
+        process.stderr.write(`${(thrown as Error).message}\n`);
         return 2;
     }
 

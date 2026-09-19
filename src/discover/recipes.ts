@@ -56,20 +56,16 @@ const deepestRecipe = 6;
 
 // What a type is called, for the line asking for a test input factory.
 //
-// A union of many parts is written out in full by the checker, and a union of a hundred unknowns
-// reads as "unknown | unknown | ..." for a hundred turns. The parts are counted once each and the
-// whole is cut short, because the line is read by somebody deciding what to write.
+// The checker writes a type out in full, and a type built out of many others runs past a line. It
+// is cut short rather than written out, because the line is read by somebody deciding what to
+// write. Taking the repeated parts out of it was tried and taken out: a name with the repeats gone
+// is a different type from the one the person has to write a factory for.
 export function nameOf(checker: ts.TypeChecker, type: ts.Type): string {
     const written = checker.typeToString(type);
     if (written.length <= longestTypeName) {
         return written;
     }
-    const parts = [...new Set(written.split(" | "))];
-    const joined = parts.join(" | ");
-    if (joined.length <= longestTypeName) {
-        return joined;
-    }
-    return `${joined.slice(0, longestTypeName)}...`;
+    return `${written.slice(0, longestTypeName)}...`;
 }
 
 // How long a type name may be before the line naming it is cut short. Eighty is a terminal's width,
@@ -232,10 +228,10 @@ export function typeKeyOf(context: RecipeContext, type: ts.Type): string | undef
         // properties are enough to build a value from.
         return undefined;
     }
-    const file = declaration.getSourceFile().fileName;
-    if (file.includes("/node_modules/") || file.endsWith(".d.ts")) {
+    if (isOutsideTheProject(symbol)) {
         return undefined;
     }
+    const file = declaration.getSourceFile().fileName;
     return `${relativeTo(context.root, file)}#${symbol.getName()}`;
 }
 
@@ -245,8 +241,9 @@ function named(context: RecipeContext, type: ts.Type, structural: Recipe): Recip
     if (key === undefined) {
         return structural;
     }
-    const symbol = type.aliasSymbol ?? type.getSymbol();
-    return { kind: "named", key, name: symbol?.getName() ?? key, structural };
+    // The key was built from this type's symbol, so it has one and that symbol carries the name.
+    const symbol = (type.aliasSymbol ?? type.getSymbol())!;
+    return { kind: "named", key, name: symbol.getName(), structural };
 }
 
 // The recipe for a type the run supplies itself, or nothing when it supplies none.
@@ -259,8 +256,7 @@ function effectRecipe(context: RecipeContext, type: ts.Type): Recipe | undefined
     if (kind === undefined) {
         return undefined;
     }
-    const declared = symbol.declarations?.[0]?.getSourceFile().fileName;
-    if (declared === undefined || !context.runtimeFile.includes(declared)) {
+    if (!context.runtimeFile.includes(fileOfSymbol(symbol))) {
         return undefined;
     }
     return { kind: "effect", effect: kind };
@@ -271,29 +267,29 @@ function effectRecipe(context: RecipeContext, type: ts.Type): Recipe | undefined
 function builtInRecipe(context: RecipeContext, type: ts.Type, at: ts.Node, depth: number): Recipe | undefined {
     const checker = context.checker;
     const symbol = type.getSymbol();
-    const name = symbol?.getName();
-    if (name === undefined) {
+    if (symbol === undefined || !isOutsideTheProject(symbol)) {
+        // A project is free to declare `Array`, `Map` or `Set` of its own, and one that does means
+        // its own. Only a declaration the project did not write is the runtime's, and a type the
+        // project wrote is read for what it holds.
         return undefined;
     }
+    const name = symbol.getName();
     const args = checker.getTypeArguments(type as ts.TypeReference);
     if (name === "Array" || name === "ReadonlyArray") {
-        if (args[0] === undefined) {
-            return { kind: "array", element: { kind: "any" } };
-        }
-        return { kind: "array", element: recipeFor(context, args[0], at, depth + 1) };
+        return { kind: "array", element: recipeFor(context, args[0]!, at, depth + 1) };
     }
     if (name === "Promise") {
-        return { kind: "promise", value: args[0] === undefined ? { kind: "undefined" } : recipeFor(context, args[0], at, depth + 1) };
+        return { kind: "promise", value: recipeFor(context, args[0]!, at, depth + 1) };
     }
     if (name === "Map" || name === "ReadonlyMap") {
         return {
             kind: "map",
-            key: args[0] === undefined ? { kind: "string" } : recipeFor(context, args[0], at, depth + 1),
-            value: args[1] === undefined ? { kind: "string" } : recipeFor(context, args[1], at, depth + 1),
+            key: recipeFor(context, args[0]!, at, depth + 1),
+            value: recipeFor(context, args[1]!, at, depth + 1),
         };
     }
     if (name === "Set" || name === "ReadonlySet") {
-        return { kind: "set", element: args[0] === undefined ? { kind: "string" } : recipeFor(context, args[0], at, depth + 1) };
+        return { kind: "set", element: recipeFor(context, args[0]!, at, depth + 1) };
     }
     if (name === "Date") {
         return { kind: "date" };
@@ -346,6 +342,26 @@ function intersectionRecipe(context: RecipeContext, type: ts.IntersectionType, a
         return { kind: "unknown", text: nameOf(context.checker, type) };
     }
     return merged;
+}
+
+// The file a symbol was declared in.
+//
+// A symbol the checker made up rather than read out of a file was declared in none, and is named by
+// the empty path. No list of files holds it and no directory is inside it, so every question asked
+// of it below answers the way it answers for a file nobody named.
+function fileOfSymbol(symbol: ts.Symbol): string {
+    return symbol.declarations?.[0]?.getSourceFile().fileName ?? "";
+}
+
+// Whether the type this symbol declares is one the project did not write.
+//
+// Somebody else's code and a declaration file are both outside the project: the first is a package
+// the project installed and the second says what something already built looks like. Neither is a
+// type to ask the person for a factory for, and a name the runtime already uses means the
+// runtime's only when it is declared in one of them.
+function isOutsideTheProject(symbol: ts.Symbol): boolean {
+    const file = fileOfSymbol(symbol);
+    return file.includes("/node_modules/") || file.endsWith(".d.ts");
 }
 
 // Whether the type is a tuple, which is written out element by element rather than as a list of

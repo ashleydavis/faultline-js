@@ -1,7 +1,7 @@
 // Scenarios for reading the code paths out of a file.
 //
 // What a path reader does turns on the syntax it is given, and no made up value builds a piece of
-// syntax. These hand it source text of every shape it has something to say about.
+// syntax. These hand it source text of every kind it has something to say about.
 
 import ts from "typescript";
 import type { Checklist, Injector } from "faultline";
@@ -13,7 +13,7 @@ function read(text: string): ReturnType<typeof pathsIn> {
 }
 
 // Every branch a file can hold, read in one go.
-export function everyShapeOfBranch(injector: Injector, checklist: Checklist): void {
+export function everyKindOfBranch(injector: Injector, checklist: Checklist): void {
     void injector;
     void checklist;
 
@@ -144,7 +144,7 @@ export function f(a: string | undefined, b: { c?: string } | undefined): number 
 
 // The shapes a body comes in, because where a path begins is read from the body and a body is not
 // always a block.
-export function everyShapeOfBody(injector: Injector, checklist: Checklist): void {
+export function everyKindOfBody(injector: Injector, checklist: Checklist): void {
     void injector;
     void checklist;
 
@@ -157,6 +157,30 @@ export function everyShapeOfBody(injector: Injector, checklist: Checklist): void
     read("export const f = function () { return 1; };");
     read("export const f = async function* () { yield 1; };");
     read("export function f() { return (() => 1)(); }");
+
+    // A body with no statement in it, which has no statement to point at.
+    read("export function f() {}");
+    read("export function f(a = 1) { void a; }");
+
+    // A declaration with no body, which is the signature of a function written more than one way.
+    read("export function f(a: number): number;\nexport function f(a: string): string;\nexport function f(a: unknown) { return a; }");
+
+    // A branch inside a loop rather than in what the loop turns on, which is counted where a
+    // branch in the condition is not.
+    read("export function f(a: number) { while (a > 0) { if (a > 5) { a -= 1; } } }");
+    read("export function f(a: number) { do { if (a > 5) { a -= 1; } } while (a > 0); }");
+    read("export function f(n: number) { for (let i = 0; i < n; i += 1) { if (i > 2) { break; } } }");
+    read("export function f(n: number) { for (let i = 0; i < n; i += (i > 1 ? 2 : 1)) { void i; } }");
+
+    // A short circuit inside a loop's body rather than in what the loop turns on, which is counted
+    // where one in the condition is not.
+    read("export function f(a: number, b?: string) { while (a > 0) { const c = b ?? 'x'; void c; a -= 1; } }");
+    read("export function f(a: number, b?: string) { do { const c = b ?? 'x'; void c; a -= 1; } while (a > 0); }");
+    read("export function f(n: number, b?: string) { for (let i = 0; i < n; i += 1) { const c = b ?? 'x'; void c; } }");
+
+    // A short circuit in what a `for` moves on by each turn, which runs as often as the condition
+    // and is counted the same way.
+    read("export function f(n: number, b?: number) { for (let i = 0; i < n; i += (b ?? 1)) { void i; } }");
     read("export class A { }");
     read("");
 }

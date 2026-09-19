@@ -4,7 +4,7 @@
 // executed, so nothing is written into your code and nothing is inserted into the copy that runs.
 
 import ts from "typescript";
-import { functionLabel, isFunctionNode, isReportedFunction } from "./names.ts";
+import { functionLabel, isFunctionNode, isReportedFunction, type FunctionNode } from "./names.ts";
 
 // One code path a run reports, and how to tell whether it ran.
 export interface PathSite {
@@ -138,9 +138,8 @@ export function pathsIn(source: ts.SourceFile, file: string): Paths {
     }
 
     // Reads a function's body and each default its parameters carry.
-    function readFunction(node: ts.Node, here: string): void {
-        const withBody = node as ts.FunctionLikeDeclaration;
-        for (const parameter of withBody.parameters ?? []) {
+    function readFunction(node: FunctionNode, here: string): void {
+        for (const parameter of node.parameters) {
             if (parameter.initializer === undefined) {
                 continue;
             }
@@ -153,7 +152,7 @@ export function pathsIn(source: ts.SourceFile, file: string): Paths {
                 placeOf(parameter.initializer),
             );
         }
-        const body = withBody.body;
+        const body = node.body;
         if (body === undefined) {
             return;
         }

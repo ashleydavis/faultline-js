@@ -38,6 +38,30 @@ function over(text: string): { context: RecipeContext; source: ts.SourceFile } {
     };
 }
 
+// A program over several pieces of source, with one of them the file the recipes are read from.
+function overFiles(files: Record<string, string>, main: string, runtimeFile: string[] = [], root = "/"): { context: RecipeContext; source: ts.SourceFile } {
+    const host: ts.CompilerHost = {
+        getSourceFile: (asked, language) => {
+            const own = files[asked];
+            const text = own ?? ts.sys.readFile(asked);
+            return text === undefined ? undefined : ts.createSourceFile(asked, text, language, true);
+        },
+        getDefaultLibFileName: (asked) => ts.getDefaultLibFilePath(asked),
+        writeFile: () => undefined,
+        getCurrentDirectory: () => "/",
+        getCanonicalFileName: (asked) => asked,
+        useCaseSensitiveFileNames: () => true,
+        getNewLine: () => "\n",
+        fileExists: (asked) => files[asked] !== undefined || ts.sys.fileExists(asked),
+        readFile: (asked) => files[asked] ?? ts.sys.readFile(asked),
+    };
+    const program = ts.createProgram(Object.keys(files), { strict: true, target: ts.ScriptTarget.ES2022 }, host);
+    return {
+        context: { checker: program.getTypeChecker(), runtimeFile, root },
+        source: program.getSourceFile(main)!,
+    };
+}
+
 // The recipe for every parameter of every function in one piece of source.
 function everyRecipe(text: string): Recipe[] {
     const { context, source } = over(text);
@@ -144,7 +168,7 @@ export function theTypesTheRunSuppliesItself(injector: Injector, checklist: Chec
 }
 
 // The collections written with no type argument, and a type name too long to print.
-export function theShapesWithNothingSaidAboutWhatTheyHold(injector: Injector, checklist: Checklist): void {
+export function theCollectionsWithNothingSaidAboutWhatTheyHold(injector: Injector, checklist: Checklist): void {
     void injector;
     void checklist;
 
@@ -195,4 +219,121 @@ export function theNameATypeIsFoundAgainBy(injector: Injector, checklist: Checkl
         ts.forEachChild(node, walk);
     };
     walk(source);
+}
+
+// The recipe for every parameter of every function in one file of several.
+function everyRecipeAcross(files: Record<string, string>, main: string, runtimeFile: string[] = [], root = "/"): Recipe[] {
+    const { context, source } = overFiles(files, main, runtimeFile, root);
+    const out: Recipe[] = [];
+    const walk = (node: ts.Node): void => {
+        if (ts.isFunctionDeclaration(node)) {
+            for (const parameter of node.parameters) {
+                out.push(recipeFor(context, context.checker.getTypeAtLocation(parameter), parameter));
+            }
+        }
+        ts.forEachChild(node, walk);
+    };
+    walk(source);
+    return out;
+}
+
+// A project that declares types of its own under the names the runtime already uses.
+//
+// A project is free to declare `Array`, `Promise`, `Map` or `Set` of its own, and one that does
+// means its own type rather than the runtime's. Reading it as the runtime's would build a list
+// where a value of the project's type belongs.
+export function typesDeclaredUnderTheNamesTheRuntimeUses(injector: Injector, checklist: Checklist): void {
+    void injector;
+    void checklist;
+
+    const found = everyRecipe(`
+export {};
+interface Array { a: string }
+interface Promise { b: string }
+interface Map { c: string }
+interface Set { d: string }
+export function g(one: Array, two: Promise, three: Map, four: Set): void { void one; void two; void three; void four; }
+`);
+    if (found.length !== 4) {
+        throw new Error("TheReaderFoundTheWrongNumberOfParameters");
+    }
+    if (JSON.stringify(found).includes('"kind":"array"')) {
+        throw new Error("TheReaderReadTheProjectsOwnTypeAsTheRuntimes");
+    }
+}
+
+// An enum with no member, and an intersection whose parts put together hold no property.
+export function theTypesWithNoPartToBuildFrom(injector: Injector, checklist: Checklist): void {
+    void injector;
+    void checklist;
+
+    everyRecipe("enum Empty {}\nexport function a(one: Empty): void { void one; }");
+    everyRecipe("type Nothing = (() => void) & ((a: number) => string);\nexport function a(one: Nothing): void { void one; }");
+}
+
+// A type of the same name declared in three files at once, so a union of them is written out under
+// one name three times over.
+export function aTypeNameThatSaysOneThingSeveralTimes(injector: Injector, checklist: Checklist): void {
+    void injector;
+    void checklist;
+
+    const declared = (member: string): string => `export interface HeldSomethingRatherLongIndeed { ${member}: string }\n`;
+    const found = everyRecipeAcross(
+        {
+            "/a.ts": declared("a"),
+            "/b.ts": declared("b"),
+            "/c.ts": declared("c"),
+            "/held.ts": [
+                'import type { HeldSomethingRatherLongIndeed as A } from "/a.ts";',
+                'import type { HeldSomethingRatherLongIndeed as B } from "/b.ts";',
+                'import type { HeldSomethingRatherLongIndeed as C } from "/c.ts";',
+                "export function g(one: A | B | C): void { void one; }",
+                "",
+            ].join("\n"),
+        },
+        "/held.ts",
+    );
+    if (found.length !== 1) {
+        throw new Error("TheReaderFoundTheWrongNumberOfParameters");
+    }
+}
+
+// Types carrying the names the run supplies but declared by the project itself, which the run does
+// not supply and reads as ordinary types.
+export function theRunsOwnNamesDeclaredByTheProject(injector: Injector, checklist: Checklist): void {
+    void injector;
+    void checklist;
+
+    const found = everyRecipeAcross(
+        {
+            "/held.ts": [
+                "export interface Injector { fail(a: string, b: string): void }",
+                "export interface Checklist { ticked(a: string): boolean }",
+                "export function g(one: Injector, two: Checklist): void { void one; void two; }",
+                "",
+            ].join("\n"),
+        },
+        "/held.ts",
+        ["/somewhere-else.ts"],
+    );
+    if (JSON.stringify(found).includes('"kind":"effect"')) {
+        throw new Error("TheReaderSuppliedATypeTheProjectDeclaredItself");
+    }
+}
+
+// A type declared inside the root of the run, whose key is written relative to that root rather
+// than by the path it sits at on this machine.
+export function aTypeDeclaredInsideTheRoot(injector: Injector, checklist: Checklist): void {
+    void injector;
+    void checklist;
+
+    const found = everyRecipeAcross(
+        { "/project/held.ts": "export interface Held { a: string }\nexport function g(one: Held): void { void one; }\n" },
+        "/project/held.ts",
+        [],
+        "/project",
+    );
+    if (!JSON.stringify(found).includes('"key":"held.ts#Held"')) {
+        throw new Error("TheKeyWasNotWrittenRelativeToTheRoot");
+    }
 }
