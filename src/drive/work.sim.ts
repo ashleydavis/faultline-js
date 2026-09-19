@@ -23,6 +23,7 @@ const held = {
         throw new Error("ThisIsWhatCodeUnderTestDoes");
     },
     handsBackAFunction: () => () => 1,
+    handsBackAFunctionThatWaits: () => async (): Promise<number> => 1,
     handsBackAFunctionThatThrows: () => (): never => {
         throw new Error("ThisIsWhatCodeUnderTestDoes");
     },
@@ -106,6 +107,26 @@ const held = {
     __flt: {
         kept: (a: string): string => a,
     },
+    readsAFileThenThrows: async (a: string): Promise<never> => {
+        void a;
+        const { readFile } = await import("node:fs/promises");
+        try {
+            await readFile("/settings.json", "utf8");
+        }
+        catch {
+            // The injector decides, and either way what comes next is the same.
+        }
+        throw new Error("ThisIsWhatCodeUnderTestDoes");
+    },
+    Reads: class Reads {
+        constructor(a: string) {
+            void a;
+        }
+
+        set needsSomething(at: unknown) {
+            void at;
+        }
+    },
     readsAFile: async (): Promise<string> => {
         const { readFile } = await import("node:fs/promises");
         try {
@@ -126,6 +147,9 @@ function fn(label: string, reach: FunctionInfo["reach"], parameters: FunctionInf
 const classes: ClassInfo[] = [
     { name: "Made", exportName: "Made", file: "held.ts", parameters: [{ name: "at", optional: false, rest: false, recipe: { kind: "number" } }], key: "held.ts#Made" },
     { name: "Refuses", exportName: "Refuses", file: "held.ts", parameters: [], key: "held.ts#Refuses" },
+    // The class takes an argument, so building it is a place an effect can fail and the exploring
+    // has somewhere to fail before it reaches the value it cannot build.
+    { name: "Reads", exportName: "Reads", file: "held.ts", parameters: [{ name: "a", optional: false, rest: false, recipe: { kind: "string" } }], key: "held.ts#Reads" },
 ];
 
 // Every function the driving is asked to call.
@@ -135,8 +159,11 @@ const functions: FunctionInfo[] = [
     fn("throws", { how: "export", name: "throws" }),
     fn("rejects", { how: "export", name: "rejects" }),
     fn("handsBackAFunction", { how: "export", name: "handsBackAFunction" }),
+    fn("handsBackAFunctionThatWaits", { how: "export", name: "handsBackAFunctionThatWaits" }),
     fn("handsBackAFunctionThatThrows", { how: "export", name: "handsBackAFunctionThatThrows" }),
     fn("readsAFile", { how: "export", name: "readsAFile" }),
+    fn("readsAFileThenThrows", { how: "export", name: "readsAFileThenThrows" }, [{ name: "a", optional: false, rest: false, recipe: { kind: "string" } }]),
+    fn("Reads.needsSomething", { how: "method", className: "Reads", classExport: "Reads", name: "needsSomething", onClass: false, accessor: "set" }, [{ name: "at", optional: false, rest: false, recipe: { kind: "unknown", text: "symbol" } }]),
     fn("kept", { how: "export", name: "__flt.kept" }, [{ name: "a", optional: false, rest: false, recipe: { kind: "string" } }]),
     { label: "inside", file: "held.ts", line: 1, async: false, parameters: [], within: "plain", reach: { how: "inside", because: "it is written inside another function, so only that function reaches it" } },
     fn("handsBackAnObject", { how: "export", name: "handsBackAnObject" }),
@@ -186,12 +213,7 @@ const model: RunModel = {
     root: "/root",
     work: "/work",
     files: [file],
-    factories: [
-        { key: "held.ts#Held", typeName: "Held", file: "held.sim.ts", exportName: "aFactory", parameters: [] },
-        // A factory written as a method on a class the sim file exports, whose class takes no
-        // argument of its own.
-        { key: "held.ts#Other", typeName: "Other", file: "held.sim.ts", exportName: "MakesThings", method: "make", parameters: [] },
-    ],
+    factories: [{ key: "held.ts#Held", typeName: "Held", file: "held.sim.ts", exportName: "aFactory", parameters: [] }],
     scenarios: [
         { file: "held.sim.ts", exportName: "aScenario", line: 1, module: "held.sim.mjs" },
         { file: "held.sim.ts", exportName: "aFailingScenario", line: 2, module: "held.sim.mjs" },
@@ -206,7 +228,7 @@ const model: RunModel = {
 };
 
 // A runtime that loads the module above and keeps what the driving said.
-function runtimeFor(reached?: () => Promise<Set<string>>): { runtime: Runtime; said: FromDriver[] } {
+function runtimeFor(reached?: () => Promise<Set<string>>, ticked = new Set(["held.ts:plain:entered"])): { runtime: Runtime; said: FromDriver[] } {
     const said: FromDriver[] = [];
     return {
         said,
@@ -217,7 +239,7 @@ function runtimeFor(reached?: () => Promise<Set<string>>): { runtime: Runtime; s
             },
             sendCoverage: async () => undefined,
             reached,
-            ticked: new Set(["held.ts:plain:entered"]),
+            ticked,
         },
     };
 }
@@ -395,6 +417,13 @@ export async function theFactoriesASimFileHolds(injector: Injector, checklist: C
     const forTheFactory = new ValueMaker(new RunSubject(1, "clean"), [], 0);
     onAClass[0]!.make(forTheFactory);
     onAClass[0]!.make(forTheFactory);
+
+    // A factory that is a method on a class taking no argument of its own.
+    const onAPlainClass = await readFactories(runtime, {
+        ...model,
+        factories: [{ key: "a", typeName: "A", file: "held.sim.ts", exportName: "MakesThings", method: "make", parameters: [] }],
+    });
+    onAPlainClass[0]!.make(new ValueMaker(new RunSubject(1, "clean"), [], 0));
 }
 
 // A run whose module will not load at all, which is what a broken import looks like from here.
@@ -466,4 +495,35 @@ export async function aValueTheRunCannotBuildOverManyTurns(injector: Injector, c
     // A value written rather than read, which the run builds outright rather than standing in for.
     const writing = functions.findIndex((one) => one.label === "Made.writeSomething");
     await runUnit(runtime, model, { index: 1, kind: "call", seed: 1, faulting: false, file: 0, fn: writing }, []);
+}
+
+// Exploring a function that reaches an effect and then throws, and one whose value the run cannot
+// build at all.
+export async function exploringAFunctionThatGoesWrong(injector: Injector, checklist: Checklist): Promise<void> {
+    void injector;
+    void checklist;
+
+    const { runtime } = runtimeFor(async () => new Set<string>());
+    for (const label of ["readsAFileThenThrows", "Reads.needsSomething"]) {
+        const at = functions.findIndex((one) => one.label === label);
+        await runUnit(runtime, model, { index: 0, kind: "explore", seed: 1, faulting: false, file: 0, fn: at }, []);
+    }
+}
+
+// A unit whose turns keep reaching paths nothing had reached before, so it keeps going rather than
+// stopping for want of progress.
+export async function aUnitThatKeepsReachingSomethingNew(injector: Injector, checklist: Checklist): Promise<void> {
+    void injector;
+    void checklist;
+
+    // One more path has run each time it is asked, which is what a function whose turns keep
+    // finding something looks like from here.
+    let told = 0;
+    const growing = async (): Promise<Set<string>> => {
+        told += 1;
+        return new Set(file.paths.slice(0, told).map((one) => one.name));
+    };
+    const { runtime } = runtimeFor(growing, new Set<string>());
+    const at = functions.findIndex((one) => one.label === "plain");
+    await runUnit(runtime, model, { index: 0, kind: "call", seed: 1, faulting: false, file: 0, fn: at }, []);
 }

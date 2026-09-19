@@ -368,10 +368,9 @@ async function explore(
 
     combinations: for (let at = 0; at < places.length; at += 1) {
         const place = places[at]!;
-        const effect = effectIn(place);
-        if (effect === undefined) {
-            continue;
-        }
+        // Every place here came from the injector, which names each one after the effect it
+        // belongs to, so each one names an effect.
+        const effect = effectIn(place)!;
         for (const failure of failuresByEffect[effect]) {
             if (await allRan(runtime, file, wanted)) {
                 break combinations;

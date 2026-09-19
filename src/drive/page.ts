@@ -42,7 +42,8 @@ export async function driveInPage(model: RunModel, units: Unit[], ticked: string
         factories = await readFactories(runtime, model);
     }
     catch (thrown) {
-        said.push({ type: "broke", error: thrown instanceof Error ? thrown.message : String(thrown) });
+        // Loading a module fails with an Error, so its message is what there is to say.
+        said.push({ type: "broke", error: (thrown as Error).message });
         return said;
     }
 
@@ -53,7 +54,9 @@ export async function driveInPage(model: RunModel, units: Unit[], ticked: string
             }
         }
         catch (thrown) {
-            said.push({ type: "broke", error: thrown instanceof Error ? thrown.message : String(thrown) });
+            // A unit answers with a wrong answer rather than throwing, so what gets here is the run
+            // failing to build or load something, which is an Error.
+            said.push({ type: "broke", error: (thrown as Error).message });
             return said;
         }
     }
