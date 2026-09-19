@@ -107,31 +107,46 @@ export function emitDriver(work: string, options: ts.CompilerOptions): void {
     carry(entry);
 }
 
+// What one request is answered with.
+//
+// It is worked out apart from the serving, because what to answer is a question about a path and
+// the serving is a socket. A scenario can ask the question; nothing can ask a socket.
+export interface Answer {
+    // The status the answer carries.
+    status: number;
+
+    // What kind of thing the body is, when there is a body.
+    type?: string;
+
+    // The body itself, when there is one.
+    body?: Buffer | string;
+}
+
+// What the work directory answers one path with.
+export function serveOne(work: string, url: string | undefined): Answer {
+    const asked = decodeURIComponent((url ?? "/").split("?")[0]!);
+    if (asked === "/") {
+        return { status: 200, type: "text/html", body: "<!doctype html><html><head><title>faultline</title></head><body></body></html>" };
+    }
+    const full = path.join(work, asked);
+    if (!full.startsWith(work)) {
+        // A path that climbs out of the work directory is refused rather than served.
+        return { status: 403 };
+    }
+    try {
+        return { status: 200, type: types[path.extname(full)] ?? "application/octet-stream", body: fs.readFileSync(full) };
+    }
+    catch {
+        return { status: 404 };
+    }
+}
+
 // Serves the work directory, so the page loads the copies by the paths the model names.
 export function serve(work: string): Promise<{ port: number; close: () => void }> {
     const server = http.createServer((request, response) => {
-        const asked = decodeURIComponent((request.url ?? "/").split("?")[0]!);
-        if (asked === "/") {
-            response.writeHead(200, { "content-type": "text/html" });
-            response.end("<!doctype html><html><head><title>faultline</title></head><body></body></html>");
-            return;
-        }
-        const full = path.join(work, asked);
-        if (!full.startsWith(work)) {
-            // A path that climbs out of the work directory is refused rather than served.
-            response.writeHead(403);
-            response.end();
-            return;
-        }
-        try {
-            const body = fs.readFileSync(full);
-            response.writeHead(200, { "content-type": types[path.extname(full)] ?? "application/octet-stream" });
-            response.end(body);
-        }
-        catch {
-            response.writeHead(404);
-            response.end();
-        }
+        const answer = serveOne(work, request.url);
+        response.writeHead(answer.status, answer.type === undefined ? undefined : { "content-type": answer.type });
+        response.end(answer.body);
     });
     return new Promise((settle) => {
         server.listen(0, "127.0.0.1", () => {

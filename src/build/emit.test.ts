@@ -164,8 +164,10 @@ test("a run takes away what earlier runs left behind", () => {
     const made: string[] = [];
     for (let at = 0; at < 8; at += 1) {
         const where = fs.mkdtempSync(path.join(inside, `faultline-test-${String(at)}-`));
-        // Aged apart, so which one is newest is not down to how fast the machine made them.
-        fs.utimesSync(where, new Date(), new Date(Date.now() - (8 - at) * 60000));
+        // Aged past the point where a run counts as still going, so this is not a race with any run
+        // of the tool happening alongside it, and aged apart so which one is newest is not down to
+        // how fast the machine made them.
+        fs.utimesSync(where, new Date(), new Date(Date.now() - 3600000 - (8 - at) * 60000));
         made.push(where);
     }
     try {
@@ -180,5 +182,16 @@ test("a run takes away what earlier runs left behind", () => {
         for (const one of made) {
             fs.rmSync(one, { recursive: true, force: true });
         }
+    }
+});
+
+test("a run happening alongside is left where it is", () => {
+    const where = fs.mkdtempSync(path.join(os.tmpdir(), "faultline-alongside-"));
+    try {
+        removeOldRuns();
+        assert.ok(fs.existsSync(where), "a run happening alongside was taken away");
+    }
+    finally {
+        fs.rmSync(where, { recursive: true, force: true });
     }
 });

@@ -12,6 +12,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
 import { shimFor } from "../effects/shims/index.ts";
+import { realNow } from "../effects/globals.ts";
 import { pathsIn, type PathSite, type Unseen } from "../discover/paths.ts";
 
 // What the emit produced.
@@ -83,6 +84,13 @@ export function namesAnAsset(specifier: string): boolean {
 // each other's away. Everything older is a run somebody has finished reading about.
 const keptRuns = 4;
 
+// How recently a work directory has to have been touched to be left alone whatever its age says.
+//
+// Two runs at once each take away what the other left, and a run whose copies are taken away part
+// way through loses them. Ten minutes is longer than a run takes and short enough that what is left
+// behind does not build up.
+const stillInUse = 600000;
+
 // Takes away what earlier runs left behind.
 //
 // Every run writes a copy of the project, and nothing was ever removing them. This machine had six
@@ -98,10 +106,11 @@ export function removeOldRuns(): void {
         // A machine that will not say what is in its temporary directory keeps what is there.
         return;
     }
+    const now = realNow();
     const byAge = held
         .map((one) => path.join(inside, one))
         .map((one) => ({ one, at: madeAt(one) }))
-        .filter((held_) => held_.at > 0)
+        .filter((held_) => held_.at > 0 && now - held_.at > stillInUse)
         .sort((left, right) => right.at - left.at);
     for (const { one } of byAge.slice(keptRuns)) {
         try {
