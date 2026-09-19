@@ -45,8 +45,9 @@ export function isReportedFunction(node: ts.Node): node is FunctionNode {
         // A function given a name by the declaration it is assigned to reads like a declared
         // function to anybody looking at the file, so it is reported like one. One passed straight
         // to another call has no name to print and belongs to its caller.
+        // A parsed node always has a parent, so there is no check for one here.
         const parent = node.parent;
-        return parent !== undefined && ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name);
+        return ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name);
     }
     return false;
 }
@@ -58,7 +59,8 @@ export function functionLabel(node: FunctionNode): string {
         return `${ownerName(node)}.constructor`;
     }
     if (ts.isMethodDeclaration(node) || ts.isGetAccessorDeclaration(node) || ts.isSetAccessorDeclaration(node)) {
-        const own = node.name !== undefined && ts.isIdentifier(node.name) ? node.name.text : plainName(node.name);
+        // A method, a getter and a setter all carry a name, so there is no check for one here.
+        const own = ts.isIdentifier(node.name) ? node.name.text : plainName(node.name);
         const owner = ownerName(node);
         if (owner === "") {
             return own;
@@ -68,8 +70,9 @@ export function functionLabel(node: FunctionNode): string {
     if (ts.isFunctionDeclaration(node)) {
         return node.name?.text ?? "(anonymous)";
     }
+    // A parsed node always has a parent, so there is no check for one here.
     const parent = node.parent;
-    if (parent !== undefined && ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) {
+    if (ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) {
         return parent.name.text;
     }
     return "(anonymous)";
@@ -78,16 +81,14 @@ export function functionLabel(node: FunctionNode): string {
 // The class or object a method was declared on, or the empty string when it was declared on
 // neither.
 function ownerName(node: ts.Node): string {
+    // A parsed node always has a parent, so there is no check for one here or below.
     const parent = node.parent;
-    if (parent === undefined) {
-        return "";
-    }
     if (ts.isClassDeclaration(parent) || ts.isClassExpression(parent)) {
         return parent.name?.text ?? "(anonymous class)";
     }
     if (ts.isObjectLiteralExpression(parent)) {
         const holder = parent.parent;
-        if (holder !== undefined && ts.isVariableDeclaration(holder) && ts.isIdentifier(holder.name)) {
+        if (ts.isVariableDeclaration(holder) && ts.isIdentifier(holder.name)) {
             return holder.name.text;
         }
     }
@@ -95,14 +96,14 @@ function ownerName(node: ts.Node): string {
 }
 
 // A property name written out, for the names that are not plain identifiers.
+//
+// A plain identifier never reaches this: what has one is read straight off it. What is left is a
+// name written as text, as a number, as a private name, or worked out while the code runs.
 function plainName(name: ts.PropertyName | undefined): string {
     if (name === undefined) {
         return "(anonymous)";
     }
-    if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) {
-        return name.text;
-    }
-    if (ts.isPrivateIdentifier(name)) {
+    if (ts.isStringLiteral(name) || ts.isNumericLiteral(name) || ts.isPrivateIdentifier(name)) {
         return name.text;
     }
     return name.getText();
