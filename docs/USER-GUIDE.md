@@ -103,9 +103,13 @@ Faultline automatically instantiates parameters where possible.
 
 It can handle ordinary values like strings, numbers, booleans, bigints, literals, unions, optionals, arrays, tuples, objects, interfaces, records, maps, sets, dates, regular expressions, URLs, byte arrays, errors, promises, functions, classes and generics.
 
+A file your code reads comes from this run's own tree. A path the run was written to reads back what it was given, a path your project has reads the real file, and only a path neither has is made up. Every write is held in that tree and no write reaches the disk, so a run reads your project and never changes it.
+
+A server your code starts opens no socket and takes the requests the run made up, and a program your code starts is started nowhere and says what the run made up.
+
 It replaces what your code reaches the machine through, so your code declares none of it: `Date`, `Date.now`, `Math.random`, `fetch`, `setTimeout`, `setInterval`, `performance.now` and `crypto`, the modules `node:fs`, `node:fs/promises`, `node:dns`, `node:http`, `node:https`, `node:net` and `node:child_process`, and in a browser `XMLHttpRequest`, `WebSocket`, `localStorage` and `sessionStorage`.
 
-It injects failures into every one of them: a read fails with `ENOENT`, `EACCES`, `EIO`, `EISDIR` and `ENOSPC` in turn, a request is refused, times out, resolves no name, answers 500 and answers with a body that will not parse, a program is missing, will not start, ends badly or writes to the error stream, and the clock goes backwards and jumps forward. A function it passes in throws and rejects, and an argument arrives as `null` or `undefined` whatever its type said.
+It injects failures into every one of them: a read fails with `ENOENT`, `EACCES`, `EIO`, `EISDIR` and `ENOSPC` in turn, a request is refused, times out, resolves no name, answers 500 and answers with a body that will not parse, a program is missing, will not start, ends badly with a reason on the error stream and ends badly with none, writes to the error stream and carries on, ends without a word over the channel back, or never ends at all, and the clock goes backwards and jumps forward. A function it passes in throws and rejects, and an argument arrives as `null` or `undefined` whatever its type said.
 
 A call that waits costs a run no time. `setTimeout` does the work at once and moves the run's own clock forward instead, so a function that sleeps for an hour is exercised in no time and still reads a clock that has moved.
 
@@ -258,7 +262,7 @@ A scenario runs against effects that answer, so nothing fails underneath it unle
 injector.fail("net", "refused");
 ```
 
-The failures you can ask for are `refused`, `timeout`, `dns`, `server-error` and `bad-body` on `net`; `missing`, `denied`, `io`, `is-directory` and `full` on `files`; `short`, `closed` and `broken-pipe` on `writer`; `backwards` and `jump` on `clock`; and `missing`, `denied`, `failed` and `on-error-stream` on `process`.
+The failures you can ask for are `refused`, `timeout`, `dns`, `server-error` and `bad-body` on `net`; `missing`, `denied`, `io`, `is-directory` and `full` on `files`; `short`, `closed` and `broken-pipe` on `writer`; `backwards` and `jump` on `clock`; and `missing`, `denied`, `failed`, `failed-quietly`, `on-error-stream`, `said-nothing` and `never-ends` on `process`.
 
 ## Step 7: Write invariants for what has to keep holding
 

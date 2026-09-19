@@ -142,7 +142,7 @@ export function f(a: string | undefined, b: { c?: string } | undefined): number 
     }
 }
 
-// The shapes a body comes in, because where a path begins is read from the body and a body is not
+// Every way a body is written, because where a path begins is read from the body and a body is not
 // always a block.
 export function everyKindOfBody(injector: Injector, checklist: Checklist): void {
     void injector;

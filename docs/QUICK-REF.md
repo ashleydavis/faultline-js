@@ -44,7 +44,7 @@ npx playwright install chromium
 npx flt --browser
 ```
 
-That serves your files to a real page and calls them there. What V8 counts in a browser is what it counts in Node, so the report reads the same either way. `--chromium <path>` names a browser where Playwright's own is not the one wanted, and `FAULTLINE_CHROMIUM` says the same thing.
+That loads your files into a real page and calls them there. What V8 counts in a browser is what it counts in Node, so the report reads the same either way. `--chromium <path>` names a browser where Playwright's own is not the one wanted, and `FAULTLINE_CHROMIUM` says the same thing.
 
 ## 4. Read the report
 

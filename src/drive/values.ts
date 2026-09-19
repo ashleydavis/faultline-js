@@ -90,7 +90,7 @@ export function builtAround(tests: (string | number | boolean)[]): string[] {
     const around: string[] = [];
     for (const one of named) {
         if (one !== "" && one.length <= longestBuiltAround) {
-            // Four shapes, because what the code after a split or a join turns on differs: two
+            // Four of them, because what the code after a split or a join turns on differs: two
             // numbers in order, two out of order, two that are not numbers at all, and more than
             // two.
             around.push(`1${one}2`, `2${one}1`, `a${one}b`, `a${one}b${one}c`);
@@ -133,7 +133,7 @@ export function standIn(answers: Answers = { values: [], properties: [], at: 0, 
         get: (target, name) => {
             // Turning a value into a string or a number goes through these, and a stand-in at one
             // of them hands back another stand-in rather than a primitive, which the runtime
-            // refuses. Putting one in a template literal is ordinary code, so they answer plainly.
+            // refuses. Putting one in a template literal is ordinary code, so they answer with a name.
             if (name === "toString" || name === "valueOf" || name === Symbol.toPrimitive) {
                 return () => standInName;
             }

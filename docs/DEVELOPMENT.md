@@ -45,11 +45,11 @@ An example with a `run-flags.txt` is run with the flags in it. One without is ru
 ## How a run works
 
 1. `src/discover/sources.ts` walks the tree and says which files are source, which are sim files and which were left out.
-2. `src/build/program.ts` builds a TypeScript program over them, reading the project's own `tsconfig.json` where it has one.
+2. `src/build/program.ts` builds a TypeScript program over them, reading the project's own `tsconfig.json` where it has one. It reads the project through `node:fs`, the same way every other part of the tool does, so one thing decides what a file holds.
 3. `src/discover/functions.ts` reads every function, every class and every factory and scenario, and `src/discover/recipes.ts` turns each parameter's type into a recipe for building values of it.
 4. `src/discover/paths.ts` finds every code path and where each one sits in the text.
 5. `src/drive/work.ts` does the driving: it loads the copies, builds values, calls every function, runs every scenario and checks every invariant. It touches nothing only Node has, so a browser loads it too.
-6. `src/drive/child.ts` is the Node side of that, in a process of its own, reading what V8 counted through the inspector. `src/drive/browser.ts` and `src/drive/page.ts` are the browser side, serving the copies to a page and reading what V8 counted there.
+6. `src/drive/child.ts` is the Node side of that, in a process of its own, reading what V8 counted through the inspector. `src/drive/browser.ts` and `src/drive/page.ts` are the browser side, answering the page's requests for the copies inside this process and reading what V8 counted there.
 7. `src/drive/host.ts` watches the run, puts the counts back together, and starts the process again after a unit it was on if it stops saying anything.
 8. `src/coverage/v8.ts` turns what V8 reported over the copy into a count at a place in your source, through the map the transpile wrote.
 9. `src/report/` turns the counts into the per function lines, the list of things to do and the one number at the end.

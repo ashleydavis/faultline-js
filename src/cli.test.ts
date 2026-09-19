@@ -234,7 +234,7 @@ test("narrowing to one file leaves another file's scenarios out of the run", asy
     assert.equal(run.text.includes("WouldStopTheRun"), false);
 });
 
-test("a file the run was told to measure and cannot find is said plainly", async () => {
+test("a file the run was told to measure and cannot find is named", async () => {
     const run = await over({ "a.ts": "export const a = 1;\n" }, ["--file", "missing.ts"]);
     assert.equal(run.status, 1);
     assert.match(run.text, /No source file called missing\.ts was found/);

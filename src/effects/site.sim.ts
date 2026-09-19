@@ -5,7 +5,7 @@
 import type { Checklist, Injector } from "faultline";
 import { callSite, placeIn, siteIn, withoutPrefix } from "./site.ts";
 
-// Every shape of frame a runtime writes.
+// Every way a runtime writes a frame.
 export function everyShapeOfFrame(injector: Injector, checklist: Checklist): void {
     void injector;
     void checklist;

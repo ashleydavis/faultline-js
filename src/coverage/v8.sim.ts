@@ -51,7 +51,7 @@ export function aMapNamingNoSource(injector: Injector, checklist: Checklist): vo
     nulled.generatedOffsetOf(1, 0);
 }
 
-// Turning a line and a column into an offset, over text of every shape.
+// Turning a line and a column into an offset, over text written every way.
 export function turningAPositionIntoAnOffset(injector: Injector, checklist: Checklist): void {
     void injector;
     void checklist;

@@ -93,9 +93,13 @@ export function aCopyWithNoDriverBesideIt(injector: Injector, checklist: Checkli
     void injector;
     void checklist;
 
-    const page = fileURLToPath(new URL("./page.ts", import.meta.url));
-    if (fs.existsSync(page)) {
-        fs.rmSync(page);
+    // Both the TypeScript and the built JavaScript are taken away, because a copy of the tool is
+    // looked in for either and what a run before this one left there is not this run's to rely on.
+    for (const name of ["page.ts", "page.js"]) {
+        const where = fileURLToPath(new URL(`./${name}`, import.meta.url));
+        if (fs.existsSync(where)) {
+            fs.rmSync(where);
+        }
     }
     let said = "";
     try {

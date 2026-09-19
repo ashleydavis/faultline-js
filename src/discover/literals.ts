@@ -3,7 +3,7 @@
 // A made up value reaches a branch that turns on the content of an argument only by matching what
 // the branch tests for. The values it tests for are written in the file: a string in a comparison,
 // a number in a `case`, a flag of an enum. They are read out here and handed to the run, so a value
-// made up for that file is drawn from what that file actually looks at.
+// made up for that file is drawn from what that file looks at.
 //
 // A name rather than a literal is read through the checker, so `ts.TypeFlags.String` gives the
 // number it stands for. That is what a file switching on flags turns on, and no list of values

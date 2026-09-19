@@ -182,7 +182,7 @@ export function d(one: symbol, two: () => symbol): void { void one; void two; }
     // An enum with one member, which is that member rather than a union of them.
     everyRecipe("enum One { A = 1 }\nexport function a(one: One): void { void one; }");
     everyRecipe('enum One { A = "a" }\nexport function a(one: One): void { void one; }');
-    // A name built out of another, which is none of the shapes the reader knows.
+    // A name built out of another, which is none of the types the reader knows.
     everyRecipe("type Named = `held-${string}`;\nexport function a(one: Named): void { void one; }");
     everyRecipe("export function a(one: keyof { a: string; b: number }): void { void one; }");
     // A type declared in the standard library rather than in the project, so the name it is found
