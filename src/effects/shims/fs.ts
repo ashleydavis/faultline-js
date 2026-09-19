@@ -11,7 +11,7 @@
 import real from "node:fs";
 import { Readable, Writable } from "node:stream";
 import { nowRunning } from "../current.ts";
-import type { RunFiles } from "../effects.ts";
+import { CodedError, type RunFiles } from "../effects.ts";
 
 // Everything the real module has and this one does not replace. A name a project imports and this
 // file does not hand out would stop the import outright, and a name declared here wins over the
@@ -59,10 +59,14 @@ class Stats {
     // Whether the path is a directory.
     private readonly directory: boolean;
 
-    constructor(of: { isFile: boolean; isDirectory: boolean; size: number }) {
+    // Whether the path is a link to somewhere else.
+    private readonly link: boolean;
+
+    constructor(of: { isFile: boolean; isDirectory: boolean; isLink?: boolean; size: number }) {
         this.size = of.size;
         this.file = of.isFile;
         this.directory = of.isDirectory;
+        this.link = of.isLink === true;
     }
 
     isFile(): boolean {
@@ -74,7 +78,7 @@ class Stats {
     }
 
     isSymbolicLink(): boolean {
-        return false;
+        return this.link;
     }
 }
 
@@ -117,25 +121,25 @@ class Dirent {
     // Which directory it is in.
     readonly parentPath: string;
 
-    // Whether it is a directory.
-    private readonly directory: boolean;
+    // What the entry is, read without following a link, which is what the runtime reads for one.
+    private readonly what: { isFile: boolean; isDirectory: boolean; isLink: boolean };
 
-    constructor(name: string, parentPath: string, directory: boolean) {
+    constructor(name: string, parentPath: string, what: { isFile: boolean; isDirectory: boolean; isLink: boolean }) {
         this.name = name;
         this.parentPath = parentPath;
-        this.directory = directory;
+        this.what = what;
     }
 
     isDirectory(): boolean {
-        return this.directory;
+        return this.what.isDirectory;
     }
 
     isFile(): boolean {
-        return !this.directory;
+        return this.what.isFile;
     }
 
     isSymbolicLink(): boolean {
-        return false;
+        return this.what.isLink;
     }
 }
 
@@ -151,7 +155,7 @@ export function readdirSync(path: string, options?: unknown): string[] | Dirent[
         return names;
     }
     const inside = path.endsWith("/") ? path.slice(0, -1) : path;
-    return names.map((name) => new Dirent(name, inside, held.statNow(`${inside}/${name}`).isDirectory));
+    return names.map((name) => new Dirent(name, inside, held.statNow(`${inside}/${name}`, false)));
 }
 
 export function mkdirSync(path: string, options?: unknown): undefined {
@@ -206,7 +210,13 @@ export function statSync(path: string): Stats {
 }
 
 export function lstatSync(path: string): Stats {
-    return statSync(path);
+    const held = tree();
+    if (held === undefined) {
+        return real.lstatSync(path) as unknown as Stats;
+    }
+    // The one call that does not follow a link, so a caller asking what a path is rather than what
+    // it points at is told it is a link.
+    return new Stats(held.statNow(path, false));
 }
 
 // Runs one of the calls above and hands the answer to a callback, the way the runtime does. The
@@ -320,7 +330,7 @@ export function lchownSync(): void {}
 export function linkSync(): void {}
 export function lutimesSync(): void {}
 export function rmdirSync(): void {}
-export function symlinkSync(): void {}
+
 export function truncateSync(): void {}
 export function utimesSync(): void {}
 export function unwatchFile(): void {}
@@ -344,10 +354,33 @@ export function mkdtempSync(prefix: string): string {
     return `${prefix}made-up`;
 }
 export function realpathSync(path: string): string {
-    return path;
+    const held = tree();
+    if (held === undefined) {
+        return real.realpathSync(path);
+    }
+    return held.linkAt(path) ?? path;
 }
 export function readlinkSync(path: string): string {
-    return path;
+    const held = tree();
+    if (held === undefined) {
+        return real.readlinkSync(path) as string;
+    }
+    const target = held.linkAt(path);
+    if (target === undefined) {
+        throw new CodedError("EINVAL", `EINVAL: invalid argument, readlink '${path}'`);
+    }
+    return target;
+}
+
+// Makes one link. The run's own tree holds it, and a read of it follows it the way the runtime
+// does.
+export function symlinkSync(target: string, path: string): void {
+    const held = tree();
+    if (held === undefined) {
+        real.symlinkSync(target, path);
+        return;
+    }
+    held.linkNow(target, path);
 }
 export function globSync(): string[] {
     return [];

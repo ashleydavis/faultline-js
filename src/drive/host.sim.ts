@@ -5,6 +5,7 @@
 
 import fs from "node:fs";
 import ts from "typescript";
+import { runWith, startDriving, stopDriving } from "../effects/current.ts";
 import { fileURLToPath } from "node:url";
 import type { Checklist, Injector } from "faultline";
 import type { FileModel, RunModel } from "../model.ts";
@@ -93,7 +94,19 @@ export function howLongStartingUpIsAllowed(injector: Injector, checklist: Checkl
 // run is measuring.
 function driverWritten(): string {
     const where = fileURLToPath(new URL("./child.ts", import.meta.url));
-    fs.writeFileSync(where, "");
+    // Written to the machine rather than into this run's own tree, so every unit after this one
+    // finds it too. A tree belongs to the unit that made it, and a call the run makes up to the
+    // starting of a driver has to find one beside the copy the same way a real run does. It goes
+    // into this run's work directory, which sits outside the repository being measured.
+    const held = runWith(undefined);
+    stopDriving();
+    try {
+        fs.writeFileSync(where, "");
+    }
+    finally {
+        startDriving();
+        runWith(held);
+    }
     return where;
 }
 

@@ -36,7 +36,19 @@ export function aTreeOfEveryKindOfFile(injector: Injector, checklist: Checklist)
         "left-out/seven.ts": "export function g() { return 1; }\n",
     });
 
-    const walked = walkSources({ root, source: [], exclude: ["left-out"] });
+    // A link sitting where a source file would sit. It is neither a file nor a directory, which is
+    // what a walk steps over, and a tree kept under version control has them.
+    fs.symlinkSync(`${root}/src/one.ts`, `${root}/src/linked.ts`);
+
+    // One name is a directory anywhere in the tree and the other is one file by its path, which is
+    // how an entry point that starts a run of its own is left out.
+    const walked = walkSources({ root, source: [], exclude: ["left-out", "src/three.js"] });
+    if (walked.sources.some((one) => one.file.endsWith("three.js"))) {
+        throw new Error("TheWalkTookAFileItWasToldToLeaveOut");
+    }
+    if (walked.sources.some((one) => one.file.endsWith("linked.ts"))) {
+        throw new Error("TheWalkTookALinkAsASourceFile");
+    }
     if (!walked.sources.some((one) => one.file.endsWith("one.ts"))) {
         throw new Error("TheWalkMissedTheSourceFile");
     }

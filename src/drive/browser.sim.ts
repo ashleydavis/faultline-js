@@ -146,7 +146,17 @@ export async function drivingARealPage(injector: Injector, checklist: Checklist)
     const work = "/driven-page";
     emitDriver(work, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext });
     fs.writeFileSync(`${work}/model.json`, "{}");
-    fs.writeFileSync(`${work}/held.mjs`, "export function greet(name) {\n    return name.length;\n}\n");
+    // The copy the page loads carries a map back to the source it was rewritten from, the way a
+    // copy a run made does. Without one, what V8 counted in the page is counted against no place in
+    // anybody's source and the run has no way to say which path ran.
+    const source = "export function greet(name) {\n    return name.length;\n}\n";
+    fs.writeFileSync(
+        `${work}/held.mjs`,
+        ts.transpileModule(source, {
+            fileName: "held.ts",
+            compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, inlineSourceMap: true, inlineSources: true },
+        }).outputText,
+    );
 
     const model = {
         root: "/project",

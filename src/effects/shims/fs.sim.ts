@@ -131,7 +131,7 @@ export async function theCallsThatReachADiskAndAreStopped(injector: Injector, ch
         files.linkSync();
         files.lutimesSync();
         files.rmdirSync();
-        files.symlinkSync();
+        files.symlinkSync("/notes.txt", "/a-link.txt");
         files.truncateSync();
         files.utimesSync();
         files.unwatchFile();

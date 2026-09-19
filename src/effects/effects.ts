@@ -153,6 +153,10 @@ export function readsBeneath(reader: Beneath | undefined): void {
     beneath = reader;
 }
 
+// How far a read follows a link to a link. Eight is deeper than any tree a project keeps, and a run
+// that made a ring of links stops there rather than following it for ever.
+const mostLinksFollowed = 8;
+
 // How many messages a replacement sends a callback it was handed. A file that names hundreds of
 // values would have every call send hundreds of messages, and the run works round them a different
 // way each turn, so what one call misses the next one sends.
@@ -215,13 +219,25 @@ export class RunEvents {
                 if (which === without && which !== named) {
                     continue;
                 }
-                one[this.properties[which]!] = this.values[(which + at) % this.values.length];
+                // How far along the list of values each property reaches is spread by the turn as
+                // well as by the property. Without the turn in it, two properties always took
+                // values a fixed distance apart in the list, so a handler reading a tag and then a
+                // number was never sent one tag with one of those numbers beside it.
+                one[this.properties[which]!] = this.values[(which * (1 + this.turn) + at) % this.values.length];
             }
-            one[this.properties[named]!] = this.values[at % this.values.length];
+            // Which value goes under the named property moves on with the turn as well as with the
+            // message, so the first message of one call is not the first message of the next. A
+            // caller that stops at the first message it knows what to do with hears only the first
+            // few, and those were the same few every time.
+            one[this.properties[named]!] = this.values[(at + this.turn) % this.values.length];
             out.push(one);
         }
+        // How many of them this call sends moves on with the turn. A program says as much as it got
+        // through before it ended, and a caller that keeps count of what it has been told has to
+        // get past one that stopped part way as well as one that said everything.
+        const said = out.slice(0, 1 + (this.turn % out.length));
         this.turn += 1;
-        return out;
+        return said;
     }
 }
 
@@ -242,6 +258,11 @@ export class RunFiles {
     // Every path this run has taken away. A file the run removed stays removed even when the disk
     // still has it, so code that removes a file and reads it back reads what it would read.
     private readonly removed = new Set<string>();
+
+    // Every link this run has made, by the path of the link, holding what it points at. A tree with
+    // links in it is what a project walking one with the entries rather than the names sees, and
+    // code that steps over anything that is not a file is reached no other way.
+    private readonly links = new Map<string, string>();
 
     // Every directory this run has been told to make, by path. A file's own directories count as
     // made, so a read after a write works without the directory being made first.
@@ -315,6 +336,38 @@ export class RunFiles {
         this.unasked = JSON.stringify(out);
     }
 
+    // Makes one link, which every read of it follows and every listing names.
+    linkNow(target: string, at: string): void {
+        this.refuse(at, "symlink");
+        const held = clean(at);
+        this.links.set(held, target);
+        this.removed.delete(held);
+        for (const above of directoriesAbove(held)) {
+            this.directories.add(above);
+        }
+    }
+
+    // What one link points at, or nothing when the path is no link of this run's.
+    linkAt(path: string): string | undefined {
+        return this.links.get(clean(path));
+    }
+
+    // Where a path ends up once every link along it has been followed.
+    //
+    // A link to a link is followed as far as the runtime follows one. A run that made a ring of
+    // them stops rather than following it for ever, and answers with the last path it was at.
+    private followed(at: string): string {
+        let held = at;
+        for (let step = 0; step < mostLinksFollowed; step += 1) {
+            const target = this.links.get(held);
+            if (target === undefined) {
+                return held;
+            }
+            held = clean(target);
+        }
+        return held;
+    }
+
     // Reads one file, and throws the way the runtime throws when it cannot.
     //
     // A path this run was given is read from what it was given. A path it was not is read from the
@@ -325,7 +378,7 @@ export class RunFiles {
         if (this.unreadable) {
             return "<not json at all>";
         }
-        const at = clean(path);
+        const at = this.followed(clean(path));
         const held = this.contents.get(at);
         if (held !== undefined) {
             return held;
@@ -392,7 +445,7 @@ export class RunFiles {
     // Saying that one was there had the compiler read a TypeScript file at every name it looked
     // for and find a settings file.
     private isThere(at: string): boolean {
-        if (this.contents.has(at) || this.directories.has(at)) {
+        if (this.contents.has(at) || this.directories.has(at) || this.links.has(at)) {
             return true;
         }
         if (this.removed.has(at)) {
@@ -428,7 +481,7 @@ export class RunFiles {
         this.insist(at, "scandir");
         const prefix = at === "/" ? "/" : `${at}/`;
         const names = new Set<string>(this.namesOnDisk(at) ?? []);
-        for (const held of [...this.contents.keys(), ...this.directories]) {
+        for (const held of [...this.contents.keys(), ...this.directories, ...this.links.keys()]) {
             if (held !== at && held.startsWith(prefix)) {
                 names.add(held.slice(prefix.length).split("/")[0]!);
             }
@@ -447,6 +500,7 @@ export class RunFiles {
         this.refuse(path, "unlink");
         const at = clean(path);
         this.contents.delete(at);
+        this.links.delete(at);
         this.removed.add(at);
     }
 
@@ -461,26 +515,32 @@ export class RunFiles {
     }
 
     // What one path is, for the code that reads a size or asks whether it is a directory.
-    statNow(path: string): { isFile: boolean; isDirectory: boolean; size: number } {
+    statNow(path: string, following = true): { isFile: boolean; isDirectory: boolean; isLink: boolean; size: number } {
         this.refuse(path, "stat");
-        const at = clean(path);
+        const asked = clean(path);
+        // A link is what it is only when it is not followed. The runtime has one call that follows
+        // one and one that does not, and this is the difference between them.
+        if (!following && this.links.has(asked)) {
+            return { isFile: false, isDirectory: false, isLink: true, size: this.links.get(asked)!.length };
+        }
+        const at = this.followed(asked);
         const held = this.contents.get(at);
         if (held !== undefined) {
-            return { isFile: true, isDirectory: false, size: held.length };
+            return { isFile: true, isDirectory: false, isLink: false, size: held.length };
         }
         if (this.directories.has(at)) {
-            return { isFile: false, isDirectory: true, size: 0 };
+            return { isFile: false, isDirectory: true, isLink: false, size: 0 };
         }
         if (beneath?.kind(at) === "directory") {
-            return { isFile: false, isDirectory: true, size: 0 };
+            return { isFile: false, isDirectory: true, isLink: false, size: 0 };
         }
         const fromDisk = this.onDisk(at);
         if (fromDisk !== undefined) {
-            return { isFile: true, isDirectory: false, size: fromDisk.length };
+            return { isFile: true, isDirectory: false, isLink: false, size: fromDisk.length };
         }
         this.insist(at, "stat");
         // A path the run was never told about is a file holding what a read of it gives back.
-        return { isFile: true, isDirectory: false, size: this.unasked.length };
+        return { isFile: true, isDirectory: false, isLink: false, size: this.unasked.length };
     }
 
     // Moves one file, keeping what is in it.
