@@ -2,10 +2,11 @@
 //
 // Whether a run is in flight is not an argument, so no made up call reaches these at all.
 //
-// Only the side with a run in flight is here. The other one answers with the machine's own clock
-// and network, and a run measuring this very file cannot reach it: the copy being measured has
-// module state of its own, and clearing the run there leaves the globals the driver replaced
-// reading the driver's.
+// Both sides are here. The side with no run in flight answers with the machine's own clock and
+// network, and what that comes to while a run is measuring this very file is whatever the run
+// itself was given: the machine's clock is held from before the copy replaced it, and the copy was
+// loaded by a run that had already replaced it once. So what is checked there is that each answers
+// at all, rather than what it answers with.
 
 import type { Checklist, Injector } from "faultline";
 import { runWith } from "./current.ts";
@@ -56,6 +57,53 @@ export async function everyGlobalWithARunInFlight(injector: Injector, checklist:
     });
 }
 
+// Every replaced global read with no run in flight.
+//
+// Nothing puts one there: this file's own copy holds the run, and until something sets it the
+// replacements fall through to what they were given.
+export async function everyGlobalWithNoRunInFlight(injector: Injector, checklist: Checklist): Promise<void> {
+    void injector;
+    void checklist;
+
+    installGlobals();
+    try {
+        if (typeof Date.now() !== "number") {
+            throw new Error("TheClockDidNotAnswerWithANumber");
+        }
+        if (typeof new Date().getTime() !== "number") {
+            throw new Error("ADateBuiltWithNoArgumentDidNotAnswer");
+        }
+        if (new Date(86400000).getTime() !== 86400000) {
+            throw new Error("ADateBuiltWithAnArgumentWasNotThatDate");
+        }
+        if (typeof Math.random() !== "number") {
+            throw new Error("TheRandomnessDidNotAnswerWithANumber");
+        }
+        if (typeof performance.now() !== "number") {
+            throw new Error("TheMonotonicClockDidNotAnswerWithANumber");
+        }
+        if (crypto.randomUUID().length !== 36) {
+            throw new Error("TheIdentifierWasNotAUuid");
+        }
+        if (crypto.getRandomValues(new Uint8Array(8)).length !== 8) {
+            throw new Error("TheBytesWereNotHandedBack");
+        }
+        if (!((await fetch("https://example.com/")) instanceof Response)) {
+            throw new Error("TheNetworkDidNotAnswer");
+        }
+        await new Promise<void>((settle) => {
+            const held = setTimeout(settle, 1);
+            clearTimeout(held);
+            settle();
+        });
+        const every = setInterval(() => undefined, 1);
+        clearInterval(every);
+    }
+    finally {
+        removeGlobals();
+    }
+}
+
 // A call that waits costs the run no time and moves its clock forward instead.
 export async function aCallThatWaitsCostsNoTime(injector: Injector, checklist: Checklist): Promise<void> {
     void injector;
@@ -81,9 +129,15 @@ export async function aRepeatingTimerRunsOneTurn(injector: Injector, checklist: 
 
     await replaced(async () => {
         let turns = 0;
-        setInterval(() => {
+        const every = setInterval(() => {
             turns += 1;
-        }, 10);
+        }, 10) as { ref: () => void; unref: () => void };
+        // A caller that says whether the timer keeps the runtime awake, which a run's own does not.
+        every.ref();
+        every.unref();
+        const once = setTimeout(() => undefined, 10) as unknown as { ref: () => void; unref: () => void };
+        once.ref();
+        once.unref();
         clearInterval(0 as unknown as ReturnType<typeof setInterval>);
         clearTimeout(0 as unknown as ReturnType<typeof setTimeout>);
         await new Promise<void>((settle) => queueMicrotask(() => queueMicrotask(settle)));
@@ -180,6 +234,11 @@ export async function theWaysAPageReachesTheNetwork(injector: Injector, checklis
     const held = runWith(subject);
     try {
         await askedFor(global, "https://example.com/");
+        // A request that will not reach its server, so what a caller listening for that is told.
+        subject.injector.fail("net", "refused");
+        subject.injector.fail("net", "refused");
+        subject.injector.fail("net", "refused");
+        await askedFor(global, "https://example.com/");
         await opened(global);
         subject.injector.fail("net", "refused");
         await opened(global);
@@ -212,13 +271,28 @@ async function askedFor(global: Record<string, unknown>, url: string): Promise<v
         const asked = new Held();
         asked.open("GET", url);
         asked.setRequestHeader("accept", "application/json");
+        // Two handlers for one thing, so the second is added to the first rather than replacing it.
         asked.addEventListener("load", () => undefined);
+        asked.addEventListener("load", () => undefined);
+        asked.addEventListener("error", () => undefined);
         asked.addEventListener("error", () => undefined);
         asked.onreadystatechange = () => undefined;
         asked.onerror = () => settle();
         asked.onload = () => settle();
         asked.send();
     });
+    // A caller that listens the older way and adds no handler at all, so there is no list of them
+    // to walk. Both ways the request can go, because each walks a list of its own.
+    for (let at = 0; at < 2; at += 1) {
+        await new Promise<void>((settle) => {
+            const bare = new Held();
+            bare.open("GET", url);
+            bare.onload = () => settle();
+            bare.onerror = () => settle();
+            bare.send();
+        });
+    }
+
     const other = new Held();
     other.open("GET", url);
     other.abort();
@@ -256,4 +330,95 @@ function put(global: Record<string, unknown>, name: string, was: PropertyDescrip
         return;
     }
     Object.defineProperty(global, name, was);
+}
+
+// A runtime missing each of the globals a run would replace.
+//
+// Node has no XMLHttpRequest and a browser has no process, so what is there differs, and a name the
+// runtime does not have is left alone rather than added: code that checks for a global before using
+// it would otherwise take a path the real runtime never gives it.
+export function aRuntimeMissingEachGlobal(injector: Injector, checklist: Checklist): void {
+    void injector;
+    void checklist;
+
+    const global = globalThis as unknown as Record<string, unknown>;
+    for (const name of ["fetch", "performance", "crypto"]) {
+        const was = Object.getOwnPropertyDescriptor(global, name);
+        delete global[name];
+        try {
+            installGlobals();
+            removeGlobals();
+        }
+        finally {
+            if (was !== undefined) {
+                Object.defineProperty(global, name, was);
+            }
+        }
+    }
+
+    // A runtime whose clock and randomness sit on a prototype rather than on the thing itself, so
+    // there is no description of them to put back.
+    const onAPrototype = Object.create({ now: () => 1 }) as { now: () => number };
+    const heldPerformance = Object.getOwnPropertyDescriptor(global, "performance");
+    Object.defineProperty(global, "performance", { value: onAPrototype, configurable: true });
+    try {
+        installGlobals();
+        performance.now();
+        removeGlobals();
+    }
+    finally {
+        if (heldPerformance === undefined) {
+            delete global.performance;
+        }
+        else {
+            Object.defineProperty(global, "performance", heldPerformance);
+        }
+    }
+
+    // A runtime that will not let one of its own globals be replaced keeps it, and everything else
+    // is still replaced.
+    const refuses = Object.freeze({ now: () => 1 });
+    const alsoHeld = Object.getOwnPropertyDescriptor(global, "performance");
+    Object.defineProperty(global, "performance", { value: refuses, configurable: true });
+    try {
+        installGlobals();
+        removeGlobals();
+    }
+    finally {
+        if (alsoHeld === undefined) {
+            delete global.performance;
+        }
+        else {
+            Object.defineProperty(global, "performance", alsoHeld);
+        }
+    }
+}
+
+// The older way of fetching, used with no run in flight, which reaches nothing and answers nothing.
+export function theOlderWayOfFetchingWithNoRun(injector: Injector, checklist: Checklist): void {
+    void injector;
+    void checklist;
+
+    const global = globalThis as unknown as Record<string, unknown>;
+    const held = Object.getOwnPropertyDescriptor(global, "XMLHttpRequest");
+    Object.defineProperty(global, "XMLHttpRequest", { value: class {}, configurable: true });
+    installGlobals();
+    try {
+        const Held = global.XMLHttpRequest as new () => { open: (a: string, b: string) => void; send: () => void; readyState: number };
+        const asked = new Held();
+        asked.open("GET", "https://example.com/");
+        asked.send();
+        if (asked.readyState !== 1) {
+            throw new Error("TheRequestWentSomewhereWithNoRunInFlight");
+        }
+    }
+    finally {
+        removeGlobals();
+        if (held === undefined) {
+            delete global.XMLHttpRequest;
+        }
+        else {
+            Object.defineProperty(global, "XMLHttpRequest", held);
+        }
+    }
 }
