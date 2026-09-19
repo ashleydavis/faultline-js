@@ -108,9 +108,49 @@ export function existsSync(path: string): boolean {
     return held === undefined ? real.existsSync(path) : held.existsNow(path);
 }
 
-export function readdirSync(path: string): string[] {
+// One entry of a directory, as a caller that asked for the entries rather than the names reads it.
+class Dirent {
+    // What the entry is called.
+    readonly name: string;
+
+    // Which directory it is in.
+    readonly parentPath: string;
+
+    // Whether it is a directory.
+    private readonly directory: boolean;
+
+    constructor(name: string, parentPath: string, directory: boolean) {
+        this.name = name;
+        this.parentPath = parentPath;
+        this.directory = directory;
+    }
+
+    isDirectory(): boolean {
+        return this.directory;
+    }
+
+    isFile(): boolean {
+        return !this.directory;
+    }
+
+    isSymbolicLink(): boolean {
+        return false;
+    }
+}
+
+export function readdirSync(path: string, options?: unknown): string[] | Dirent[] {
     const held = tree();
-    return held === undefined ? (real.readdirSync(path) as string[]) : held.listNow(path);
+    if (held === undefined) {
+        return real.readdirSync(path, options as never) as string[];
+    }
+    const names = held.listNow(path);
+    // A caller that asked for the entries rather than the names gets them, which is how anything
+    // walking a tree asks.
+    if ((options as { withFileTypes?: boolean } | undefined)?.withFileTypes !== true) {
+        return names;
+    }
+    const inside = path.endsWith("/") ? path.slice(0, -1) : path;
+    return names.map((name) => new Dirent(name, inside, held.statNow(`${inside}/${name}`).isDirectory));
 }
 
 export function mkdirSync(path: string, options?: unknown): undefined {
@@ -248,7 +288,7 @@ export const promises = {
     readFile: async (path: string, options?: unknown): Promise<string | Buffer> => readFileSync(path, options),
     writeFile: async (path: string, data: unknown): Promise<void> => writeFileSync(path, data),
     appendFile: async (path: string, data: unknown): Promise<void> => appendFileSync(path, data),
-    readdir: async (path: string): Promise<string[]> => readdirSync(path),
+    readdir: async (path: string, options?: unknown): Promise<string[] | Dirent[]> => readdirSync(path, options),
     mkdir: async (path: string, options?: unknown): Promise<undefined> => mkdirSync(path, options),
     unlink: async (path: string): Promise<void> => unlinkSync(path),
     rm: async (path: string, options?: unknown): Promise<void> => rmSync(path, options),
@@ -259,7 +299,7 @@ export const promises = {
     access: async (path: string): Promise<void> => accessSync(path),
 };
 
-export { Stats };
+export { Dirent, Stats };
 
 
 // The calls that reach the disk and are not answered above. Each one is stopped rather than left as
@@ -426,5 +466,5 @@ export default {
     lutimes, rmdir, symlink, truncate, utimes, write, writev, read, readv, open, mkdtemp, realpath,
     readlink, glob, statfs, fstat, lstat, watch, watchFile, opendir, openAsBlob,
     createReadStream, createWriteStream, exists,
-    promises, Stats,
+    promises, Stats, Dirent,
 };
