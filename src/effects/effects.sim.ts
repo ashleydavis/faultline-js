@@ -229,6 +229,33 @@ export async function theDiskUnderARunsOwnTree(injector: Injector, checklist: Ch
         await assertThrows(async () => files.statNow("/held/b.txt"), "APathTheProjectDoesNotHaveWasStated");
         await assertThrows(() => files.list("/held/b"), "ADirectoryTheProjectDoesNotHaveWasListed");
 
+        // A link, and a link to that link. A read follows as many as it finds, and the one call
+        // that does not follow says the path is a link rather than what it points at.
+        files.linkNow("/held/a.txt", "/held/one.link");
+        files.linkNow("/held/one.link", "/held/two.link");
+        if ((await files.read("/held/two.link")) !== "written again\n") {
+            throw new Error("ALinkToALinkWasNotFollowedToTheFile");
+        }
+        if (!files.statNow("/held/one.link", false).isLink) {
+            throw new Error("ALinkWasNotSaidToBeOne");
+        }
+        if (files.statNow("/held/one.link").isLink) {
+            throw new Error("ALinkFollowedToItsFileWasStillSaidToBeALink");
+        }
+        if (!(await files.list("/held")).includes("one.link")) {
+            throw new Error("ALinkWasNotNamedInTheListing");
+        }
+        if (files.linkAt("/held/one.link") !== "/held/a.txt") {
+            throw new Error("ALinkDidNotSayWhatItPointsAt");
+        }
+        if (files.linkAt("/held/a.txt") !== undefined) {
+            throw new Error("AFileSaidItPointsSomewhere");
+        }
+        // A ring of links is followed as far as a read follows one and then stopped.
+        files.linkNow("/held/second.ring", "/held/first.ring");
+        files.linkNow("/held/first.ring", "/held/second.ring");
+        await files.read("/held/first.ring");
+
         // A path nowhere near the disk names a tree that is not on this machine, where every path
         // asked about is there.
         if ((await files.read("/made/up.json")).length === 0) {
