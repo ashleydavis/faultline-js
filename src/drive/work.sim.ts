@@ -7,8 +7,9 @@ import type { Checklist, Injector } from "faultline";
 import type { FileModel, RunModel } from "../model.ts";
 import type { ClassInfo, FunctionInfo } from "../discover/functions.ts";
 import type { FromDriver, Unit } from "./protocol.ts";
+import { RunSubject } from "../effects/subject.ts";
 import { readFactories, runUnit, type Runtime } from "./work.ts";
-import type { CallableFactory } from "./values.ts";
+import { ValueMaker, type CallableFactory } from "./values.ts";
 
 // What the module the driving loads hands out. Every one of these is something a function under
 // test does, and the driving has something to say about each.
@@ -22,6 +23,9 @@ const held = {
         throw new Error("ThisIsWhatCodeUnderTestDoes");
     },
     handsBackAFunction: () => () => 1,
+    handsBackAFunctionThatThrows: () => (): never => {
+        throw new Error("ThisIsWhatCodeUnderTestDoes");
+    },
     handsBackAnObject: () => ({ held: () => 1, also: 2 }),
     handsBackAList: () => [1, 2],
     Made: class Made {
@@ -50,6 +54,22 @@ const held = {
         refuses(): never {
             throw new Error("ThisIsWhatCodeUnderTestDoes");
         }
+
+        also(a: string): string {
+            return a;
+        }
+
+        async alsoWaits(a: string): Promise<string> {
+            return a;
+        }
+
+        static get onTheClassRead(): number {
+            return 1;
+        }
+
+        static set onTheClassRead(at: number) {
+            void at;
+        }
     },
     Refuses: class Refuses {
         constructor() {
@@ -68,6 +88,19 @@ const held = {
         throw new Error("TheInvariantStoppedHolding");
     },
     aFactory: (): { name: string } => ({ name: "a" }),
+    anAsyncInvariant: async (): Promise<void> => undefined,
+    __flt: {
+        kept: (a: string): string => a,
+    },
+    readsAFile: async (): Promise<string> => {
+        const { readFile } = await import("node:fs/promises");
+        try {
+            return await readFile("/settings.json", "utf8");
+        }
+        catch {
+            return "it went wrong";
+        }
+    },
 };
 
 // One function of the model, written the way the reading of a project writes it.
@@ -88,6 +121,10 @@ const functions: FunctionInfo[] = [
     fn("throws", { how: "export", name: "throws" }),
     fn("rejects", { how: "export", name: "rejects" }),
     fn("handsBackAFunction", { how: "export", name: "handsBackAFunction" }),
+    fn("handsBackAFunctionThatThrows", { how: "export", name: "handsBackAFunctionThatThrows" }),
+    fn("readsAFile", { how: "export", name: "readsAFile" }),
+    fn("kept", { how: "export", name: "__flt.kept" }, [{ name: "a", optional: false, rest: false, recipe: { kind: "string" } }]),
+    { label: "inside", file: "held.ts", line: 1, async: false, parameters: [], within: "plain", reach: { how: "inside", because: "it is written inside another function, so only that function reaches it" } },
     fn("handsBackAnObject", { how: "export", name: "handsBackAnObject" }),
     fn("handsBackAList", { how: "export", name: "handsBackAList" }),
     fn("needsSomething", { how: "export", name: "plain" }, [{ name: "a", optional: false, rest: false, recipe: { kind: "unknown", text: "symbol" } }]),
@@ -98,6 +135,11 @@ const functions: FunctionInfo[] = [
     fn("Made.read", { how: "method", className: "Made", classExport: "Made", name: "read", onClass: false, accessor: "get" }),
     fn("Made.write", { how: "method", className: "Made", classExport: "Made", name: "read", onClass: false, accessor: "set" }, [{ name: "at", optional: false, rest: false, recipe: { kind: "number" } }]),
     fn("Made.refuses", { how: "method", className: "Made", classExport: "Made", name: "refuses", onClass: false, accessor: "none" }),
+    fn("Made.also", { how: "method", className: "Made", classExport: "Made", name: "also", onClass: false, accessor: "none" }, [{ name: "a", optional: false, rest: false, recipe: { kind: "string" } }]),
+    fn("Made.alsoWaits", { how: "method", className: "Made", classExport: "Made", name: "alsoWaits", onClass: false, accessor: "none" }, [{ name: "a", optional: false, rest: false, recipe: { kind: "string" } }]),
+    fn("Made.onTheClassRead", { how: "method", className: "Made", classExport: "Made", name: "onTheClassRead", onClass: true, accessor: "get" }),
+    fn("Made.onTheClassWrite", { how: "method", className: "Made", classExport: "Made", name: "onTheClassRead", onClass: true, accessor: "set" }, [{ name: "at", optional: false, rest: false, recipe: { kind: "number" } }]),
+    fn("Undeclared.method", { how: "method", className: "Undeclared", classExport: "Made", name: "method", onClass: false, accessor: "none" }, [{ name: "a", optional: false, rest: false, recipe: { kind: "string" } }]),
     fn("Made.missing", { how: "method", className: "Made", classExport: "Made", name: "notThereAtAll", onClass: false, accessor: "none" }),
     fn("Refuses.method", { how: "method", className: "Refuses", classExport: "Refuses", name: "method", onClass: false, accessor: "none" }),
     fn("NotExported.method", { how: "method", className: "NotExported", classExport: "", name: "method", onClass: false, accessor: "none" }),
@@ -222,6 +264,18 @@ export async function everyWayAScenarioGoes(injector: Injector, checklist: Check
     }
 }
 
+// An invariant that hands back a promise, which the driving waits for.
+export async function anInvariantThatHandsBackAPromise(injector: Injector, checklist: Checklist): Promise<void> {
+    void injector;
+    void checklist;
+
+    const { runtime } = runtimeFor(everything);
+    const waiting: RunModel = { ...model, invariants: [{ file: "held.sim.ts", exportName: "anAsyncInvariant", line: 6, module: "held.sim.mjs" }] };
+    if (!(await runUnit(runtime, waiting, { index: 0, kind: "call", seed: 1, faulting: false, file: 0, fn: 0 }, []))) {
+        throw new Error("TheInvariantThatHandsBackAPromiseStoppedTheRun");
+    }
+}
+
 // An invariant that holds and one that stops holding.
 export async function everyWayAnInvariantGoes(injector: Injector, checklist: Checklist): Promise<void> {
     void injector;
@@ -236,6 +290,39 @@ export async function everyWayAnInvariantGoes(injector: Injector, checklist: Che
     if (!said.some((one) => one.type === "failed" && one.kind === "invariant")) {
         throw new Error("TheDrivingDidNotSayTheInvariantStoppedHolding");
     }
+}
+
+// A method driven over several turns, so the run uses the object before it calls the method being
+// measured. A method that does something only once another has been called is reached no other way.
+export async function aMethodCalledOnAnObjectTheRunHasUsed(injector: Injector, checklist: Checklist): Promise<void> {
+    void injector;
+    void checklist;
+
+    // Says nothing has run, so the unit works through its turns rather than stopping at the first.
+    const { runtime } = runtimeFor(async () => new Set<string>());
+    const at = functions.findIndex((one) => one.label === "Made.method");
+    await runUnit(runtime, model, { index: 0, kind: "call", seed: 1, faulting: false, file: 0, fn: at }, []);
+}
+
+// Exploring a function whose effects can fail, with nothing saying the paths have run, so every
+// place is failed in turn.
+export async function exploringEveryPlaceAnEffectCanFail(injector: Injector, checklist: Checklist): Promise<void> {
+    void injector;
+    void checklist;
+
+    // A function with a parameter, because a value arriving as nothing at all is itself a place an
+    // effect can fail and the run asks about one for every argument it builds.
+    const { runtime, said } = runtimeFor();
+    const at = functions.findIndex((one) => one.label === "plain");
+    await runUnit(runtime, model, { index: 0, kind: "explore", seed: 1, faulting: false, file: 0, fn: at }, []);
+    const first = said.find((one) => one.type === "unit");
+    if (first === undefined || first.type !== "unit" || first.calls < 2) {
+        throw new Error("TheExploringMadeOnlyTheOneCallThatFindsThePlaces");
+    }
+    // And again with a runtime that can say what has run but says nothing has, so it keeps going
+    // until it runs out of places rather than until the paths are covered.
+    const { runtime: nothingYet } = runtimeFor(async () => new Set<string>());
+    await runUnit(nothingYet, model, { index: 0, kind: "explore", seed: 1, faulting: false, file: 0, fn: at }, []);
 }
 
 // A runtime that can say what has run, so a unit stops as soon as every path it is after has run.
@@ -272,15 +359,19 @@ export async function theFactoriesASimFileHolds(injector: Injector, checklist: C
     if (made.length !== 1) {
         throw new Error("TheReadingFoundTheWrongNumberOfFactories");
     }
-    const maker = { subject: { rng: { pick: <T>(items: readonly T[]): T => items[0]!, int: () => 0 } }, make: () => 1, spoiled: (one: unknown) => one };
-    made[0]!.make(maker as never);
+    made[0]!.make(new ValueMaker(new RunSubject(1, "clean"), [], 0));
 
     await readFactories(runtime, { ...model, factories: [{ key: "a", typeName: "A", file: "nowhere.sim.ts", exportName: "aFactory", parameters: [] }] });
     await readFactories(runtime, { ...model, factories: [{ key: "a", typeName: "A", file: "held.sim.ts", exportName: "notThereAtAll", parameters: [] }] });
-    await readFactories(runtime, {
+    // A factory that is a method on a class. The class is built once and kept, so the second value
+    // it makes comes from the same object as the first.
+    const onAClass = await readFactories(runtime, {
         ...model,
         factories: [{ key: "a", typeName: "A", file: "held.sim.ts", exportName: "Made", method: "method", parameters: [{ name: "a", optional: false, rest: false, recipe: { kind: "string" } }], ownerParameters: [{ name: "at", optional: false, rest: false, recipe: { kind: "number" } }] }],
     });
+    const forTheFactory = new ValueMaker(new RunSubject(1, "clean"), [], 0);
+    onAClass[0]!.make(forTheFactory);
+    onAClass[0]!.make(forTheFactory);
 }
 
 // A run whose module will not load at all, which is what a broken import looks like from here.

@@ -210,10 +210,11 @@ async function callWhileRunning(
 // The other methods of the class are called first, as many of them as the turn says, so one turn
 // calls the method on a fresh object and later turns call it on one that has been used.
 function usedFirst(maker: ValueMaker, instance: Record<string, unknown>, held: FunctionInfo, siblings: FunctionInfo[]): void {
-    const others = siblings.filter((one) => one.label !== held.label && one.reach.how === "method" && !one.reach.onClass);
+    const others = siblings.filter((one) => one.reach.how === "method" && !one.reach.onClass && one.label !== held.label);
     for (let at = 0; at < maker.at % (others.length + 1); at += 1) {
         const other = others[at % others.length]!;
-        const name = other.reach.how === "method" ? other.reach.name : "";
+        // Every one of these is a method, because that is what the list was filtered to.
+        const name = (other.reach as { name: string }).name;
         const method = instance[name];
         if (typeof method !== "function") {
             continue;
