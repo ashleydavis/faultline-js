@@ -5,7 +5,6 @@
 // held in memory, so nothing here reaches a disk.
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import ts from "typescript";
 import type { Checklist, Injector } from "faultline";
@@ -114,16 +113,16 @@ export function whatEarlierRunsLeftBehind(injector: Injector, checklist: Checkli
     void injector;
     void checklist;
 
-    const inside = os.tmpdir();
-    const made: string[] = [];
+    const inside = "/holding";
     for (let at = 0; at < 8; at += 1) {
         const where = path.join(inside, `faultline-made-${String(at)}`);
         fs.mkdirSync(where);
         fs.writeFileSync(path.join(where, "a.mjs"), "export const a = 1;\n");
-        made.push(where);
     }
-    removeOldRuns();
     // Something that is not a run of this tool is left where it is.
     fs.mkdirSync(path.join(inside, "somebody-elses-directory"));
+    removeOldRuns(inside);
+    // A directory that is not there at all leaves everything where it is.
+    removeOldRuns("/never-made");
     removeOldRuns();
 }

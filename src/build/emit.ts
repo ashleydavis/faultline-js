@@ -96,8 +96,7 @@ const stillInUse = 600000;
 // Every run writes a copy of the project, and nothing was ever removing them. This machine had six
 // thousand of them holding eighteen gigabytes before anybody noticed, and a run that fills a disk
 // is a run that stops working.
-export function removeOldRuns(): void {
-    const inside = os.tmpdir();
+export function removeOldRuns(inside = os.tmpdir()): void {
     let held: string[];
     try {
         held = fs.readdirSync(inside).filter((one) => one.startsWith("faultline-"));

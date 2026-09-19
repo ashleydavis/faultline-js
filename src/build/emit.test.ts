@@ -160,18 +160,19 @@ test("a copy carries no counter of its own, because V8 does the counting", () =>
 });
 
 test("a run takes away what earlier runs left behind", () => {
-    const inside = os.tmpdir();
+    // A directory of its own, so this is not a race with any run of the tool happening alongside
+    // it: they share the system's temporary directory and each takes away what the other left.
+    const inside = fs.mkdtempSync(path.join(os.tmpdir(), "faultline-holding-"));
     const made: string[] = [];
     for (let at = 0; at < 8; at += 1) {
         const where = fs.mkdtempSync(path.join(inside, `faultline-test-${String(at)}-`));
-        // Aged past the point where a run counts as still going, so this is not a race with any run
-        // of the tool happening alongside it, and aged apart so which one is newest is not down to
-        // how fast the machine made them.
+        // Aged past the point where a run counts as still going, and aged apart so which one is
+        // newest is not down to how fast the machine made them.
         fs.utimesSync(where, new Date(), new Date(Date.now() - 3600000 - (8 - at) * 60000));
         made.push(where);
     }
     try {
-        removeOldRuns();
+        removeOldRuns(inside);
         const left = made.filter((one) => fs.existsSync(one));
         // The newest few are kept, because the run that just finished names one of them.
         assert.ok(left.length <= 4, `${String(left.length)} left`);
@@ -179,19 +180,22 @@ test("a run takes away what earlier runs left behind", () => {
         assert.equal(left.includes(made[0]!), false, "the oldest was kept");
     }
     finally {
-        for (const one of made) {
-            fs.rmSync(one, { recursive: true, force: true });
-        }
+        fs.rmSync(inside, { recursive: true, force: true });
     }
 });
 
 test("a run happening alongside is left where it is", () => {
-    const where = fs.mkdtempSync(path.join(os.tmpdir(), "faultline-alongside-"));
+    const inside = fs.mkdtempSync(path.join(os.tmpdir(), "faultline-holding-"));
+    const where = fs.mkdtempSync(path.join(inside, "faultline-alongside-"));
     try {
-        removeOldRuns();
+        removeOldRuns(inside);
         assert.ok(fs.existsSync(where), "a run happening alongside was taken away");
     }
     finally {
-        fs.rmSync(where, { recursive: true, force: true });
+        fs.rmSync(inside, { recursive: true, force: true });
     }
+});
+
+test("a directory that is not there leaves everything where it is", () => {
+    removeOldRuns(path.join(os.tmpdir(), "faultline-not-there-at-all"));
 });
