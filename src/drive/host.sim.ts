@@ -274,7 +274,10 @@ async function drivenInAPage(root: string): Promise<DriveResult> {
             '        return [{ type: "failed", seed: 1, where: "held.ts", error: "TheAnswerWasWrong", kind: "scenario" }];',
             "    }",
             '    if (model.root === "/page-broke") {',
-            '        return [{ type: "broke", error: "TheModuleWouldNotLoad" }];',
+            '        return [{ type: "broke", error: "TheModuleWouldNotLoad", module: "held.ts" }];',
+            "    }",
+            '    if (model.root === "/page-broke-with-no-module") {',
+            '        return [{ type: "broke", error: "TheDriverWouldNotStart" }];',
             "    }",
             "    return [",
             '        { type: "unit", index: 0, calls: 1, stepped: 1, fn: "held.ts#greet", cannotBuild: { parameter: "a", typeText: "symbol" } },',
@@ -318,4 +321,5 @@ export async function aPageThatCameBackWithSomethingWrong(injector: Injector, ch
 
     await drivenInAPage("/page-failed");
     await drivenInAPage("/page-broke");
+    await drivenInAPage("/page-broke-with-no-module");
 }

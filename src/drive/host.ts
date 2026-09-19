@@ -10,7 +10,7 @@ import type { RunModel } from "../model.ts";
 import { mergeInto, type Taken } from "../coverage/v8.ts";
 import { countsFor, didRun, type Counts } from "../report/tally.ts";
 import { driveInBrowser } from "./browser.ts";
-import { functionKey, type FromDriver, type ScenarioFailed, type ToDriver, type Unit, type UnitDone } from "./protocol.ts";
+import { functionKey, type DriverBroke, type FromDriver, type ScenarioFailed, type ToDriver, type Unit, type UnitDone } from "./protocol.ts";
 import { buildExploration, buildUnits } from "./units.ts";
 
 // What the driving came back with.
@@ -207,10 +207,19 @@ async function driveInPage(
             return;
         }
         if (message.type === "broke") {
-            result.broke = message.error;
+            result.broke = brokeAt(message);
             return;
         }
     }
+}
+
+// What a driver said when it could not start, as a line to print. A driver that names the module it
+// could not load says which one, and one that names none says only what went wrong.
+//
+// A driver in a page and a driver in a process say this the same way, so it is read here rather
+// than once for each.
+function brokeAt(message: DriverBroke): string {
+    return message.module === undefined ? message.error : `${message.module}: ${message.error}`;
 }
 
 // Puts what a driver said about one unit into what the run came back with.
@@ -357,7 +366,7 @@ function runOnce(
                 return;
             }
             if (message.type === "broke") {
-                result.broke = message.module === undefined ? message.error : `${message.module}: ${message.error}`;
+                result.broke = brokeAt(message);
                 finish({ how: "broke" });
                 return;
             }
