@@ -39,22 +39,44 @@ export async function whatTheCommandLineSaysAboutItself(injector: Injector, chec
     }
 }
 
+// Drives one whole run from the command line in a page, with the output going to a terminal or
+// being collected.
+//
+// The driver a page loads is written here, so a unit is reported and the progress line is written.
+// A driver started in a process says what the run made up, and what it says decides whether a unit
+// is ever reported at all.
+async function drivenAtTheCommandLine(root: string, onTerminal: boolean): Promise<void> {
+    fs.writeFileSync(
+        fileURLToPath(new URL("./drive/page.ts", import.meta.url)),
+        [
+            "export async function driveInPage(model, units, ticked) {",
+            "    void model; void units; void ticked;",
+            '    return [{ type: "unit", index: 0, calls: 1, stepped: 0, fn: "a.ts#greet" }, { type: "finished" }];',
+            "}",
+            "",
+        ].join("\n"),
+    );
+
+    project(root);
+    const out = process.stdout as { isTTY?: boolean };
+    const before = out.isTTY;
+    out.isTTY = onTerminal;
+    try {
+        const named = process.env.FAULTLINE_CHROMIUM;
+        await main([root, "--seeds", "1", "--budget", "200", "--browser", ...(named === undefined ? [] : ["--chromium", named])], root);
+    }
+    finally {
+        out.isTTY = before;
+    }
+}
+
 // A whole run from the command line, printing to a terminal, so the progress line is written and
 // taken away again.
 export async function aRunPrintingToATerminal(injector: Injector, checklist: Checklist): Promise<void> {
     void injector;
     void checklist;
 
-    const root = project("/at-the-terminal");
-    const out = process.stdout as { isTTY?: boolean };
-    const before = out.isTTY;
-    out.isTTY = true;
-    try {
-        await main([root, "--seeds", "1", "--budget", "200"], root);
-    }
-    finally {
-        out.isTTY = before;
-    }
+    await drivenAtTheCommandLine("/at-the-terminal", true);
 }
 
 // The same run with its output being collected, which prints no progress line at all.
@@ -62,14 +84,5 @@ export async function aRunWhoseOutputIsCollected(injector: Injector, checklist: 
     void injector;
     void checklist;
 
-    const root = project("/collected");
-    const out = process.stdout as { isTTY?: boolean };
-    const before = out.isTTY;
-    out.isTTY = false;
-    try {
-        await main([root, "--seeds", "1", "--budget", "200"], root);
-    }
-    finally {
-        out.isTTY = before;
-    }
+    await drivenAtTheCommandLine("/collected", false);
 }

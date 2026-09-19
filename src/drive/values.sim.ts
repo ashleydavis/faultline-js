@@ -46,6 +46,19 @@ export async function everythingAskedOfAStandIn(injector: Injector, checklist: C
     if (Object.prototype.toString.call(held).length === 0) {
         throw new Error("TheStandInSaidNothingAboutWhatItIs");
     }
+    // Asked for each of them by name, because turning a value into text reaches only the first of
+    // the three the runtime finds.
+    if (typeof (held as unknown as { toString: () => string }).toString() !== "string") {
+        throw new Error("TheStandInWouldNotSayWhatItIsAsText");
+    }
+    if (typeof (held as unknown as { valueOf: () => unknown }).valueOf() !== "string") {
+        throw new Error("TheStandInWouldNotSayWhatItIsWorth");
+    }
+    // A symbol the runtime reads to decide what a value is, which answers with what the function
+    // underneath has rather than another stand-in.
+    if ((held as unknown as Record<symbol, unknown>)[Symbol.iterator] !== undefined) {
+        throw new Error("TheStandInSaidItCouldBeLoopedOver");
+    }
 
     // It can be called and built, and awaiting it finishes.
     held();
@@ -138,6 +151,35 @@ export function theRecipesTheMakerCannotBuild(injector: Injector, checklist: Che
     const withFactory = new ValueMaker(new RunSubject(17, "clean"), [factory, { ...factory }], 0);
     for (let turn = 0; turn < 4; turn += 1) {
         withFactory.make({ kind: "named", key: "a#A", name: "A", structural: { kind: "unknown", text: "symbol" } });
+    }
+
+    // A factory that throws something other than a type the run cannot build. What it threw is what
+    // the caller gets: a factory somebody wrote going wrong is theirs to see, not something to
+    // build a value around.
+    const refuses = {
+        key: "a#Refuses",
+        parameters: [],
+        make: (): unknown => {
+            throw new TypeError("ThisFactoryRefusesToBuildAnything");
+        },
+    };
+    const around = new ValueMaker(new RunSubject(17, "clean"), [factory, refuses], 0);
+    let said = "";
+    for (let turn = 0; turn < 4; turn += 1) {
+        try {
+            around.make({
+                kind: "named",
+                key: "a#A",
+                name: "A",
+                structural: { kind: "named", key: "a#Refuses", name: "Refuses", structural: { kind: "object", properties: [] } },
+            });
+        }
+        catch (thrown) {
+            said = (thrown as Error).message;
+        }
+    }
+    if (said !== "ThisFactoryRefusesToBuildAnything") {
+        throw new Error("WhatAFactoryThrewWasNotHandedOn");
     }
 }
 

@@ -432,17 +432,36 @@ function fileOfUnit(model: RunModel, unit: Unit): FileModel | undefined {
     return model.files.find((one) => one.file === scenario.beside);
 }
 
+// How many properties and how many values a message a replacement sends is built from. A project of
+// a hundred files names more than any one message can carry, and the ones the file being driven
+// names come first, so what is left out is what some other file names.
+const mostNamedInAMessage = 64;
+
 // Says what the file being measured reads off its values and what its own comparisons test against.
 //
-// A file the run was never told about holds those properties, so code that parses a settings file
-// and reads a field off it finds that field. A message a replaced module sends carries them too, so
-// a handler that switches on a tag is sent every tag the file names.
+// A file the run was never told about holds that file's own properties, so code that parses a
+// settings file and reads a field off it finds that field.
+//
+// A message a replacement sends is built from every file's, with the file being driven first. The
+// tag a handler switches on is written where the message is declared and read where it is handled,
+// and those are two files as often as one, so a message built from one file alone carried a tag no
+// handler in another file ever matched.
 function tellWhatTheFileNames(subject: RunSubject, model: RunModel, unit: Unit): void {
     const file = fileOfUnit(model, unit);
-    if (file !== undefined) {
-        subject.files.holds(file.properties, file.tests);
-        subject.events.holds(file.properties, file.tests);
+    if (file === undefined) {
+        return;
     }
+    subject.files.holds(file.properties, file.tests);
+    subject.events.holds(
+        firstOf(file.properties, model.files.flatMap((one) => one.properties)),
+        firstOf(file.tests, model.files.flatMap((one) => one.tests)),
+    );
+}
+
+// What is in `first` and then what is in `rest`, each thing once, cut short at what one message
+// carries.
+function firstOf<T>(first: readonly T[], rest: readonly T[]): T[] {
+    return [...new Set([...first, ...rest])].slice(0, mostNamedInAMessage);
 }
 
 // The paths one unit is after: this function's, and those of every function written inside it,

@@ -100,24 +100,52 @@ const oneFunction = "export function greet(name: string) {\n    if (name.length 
 // A second source file, so a run reports more than one of everything.
 const twoFunctions = "export function first(at: number) {\n    return at + 1;\n}\n\nexport function second(at: number) {\n    return at - 1;\n}\n";
 
-// A sim file beside the first, so a run reads a scenario, a test input factory and an invariant.
-const oneSimFile = [
-    'import type { Checklist, Injector } from "faultline";',
-    "",
-    "export function aName(): string {",
-    '    return "a name";',
-    "}",
-    "",
-    "export function greetingCountsTheName(injector: Injector, checklist: Checklist): void {",
-    "    void injector;",
-    "    void checklist;",
-    "}",
-    "",
-    "export function everyGreetingIsCounted(): void {",
-    "    void 0;",
-    "}",
-    "",
-].join("\n");
+// Where the run being measured looks for the runtime module, which is how a parameter of an effect
+// type is told from one whose type merely carries the same name.
+//
+// A copy of the tool has no runtime module beside it, so one is written there and the sim file
+// below imports its types from where it was written.
+function runtimeWritten(): string {
+    const where = fileURLToPath(new URL("./runtime/index.ts", import.meta.url));
+    fs.writeFileSync(
+        where,
+        [
+            "export interface Injector {",
+            "    fail(effect: string, failure: string): void;",
+            "    failures(effect: string): string[];",
+            "    clear(): void;",
+            "}",
+            "",
+            "export interface Checklist {",
+            "    ticked(name: string): boolean;",
+            "    names(): string[];",
+            "}",
+            "",
+        ].join("\n"),
+    );
+    return where;
+}
+
+// A sim file beside the first, holding a test input factory, a scenario and an invariant.
+function oneSimFile(runtime: string): string {
+    return [
+        `import type { Checklist, Injector } from "${runtime}";`,
+        "",
+        "export function aName(): string {",
+        '    return "a name";',
+        "}",
+        "",
+        "export function greetingCountsTheName(injector: Injector, checklist: Checklist): void {",
+        "    void injector;",
+        "    void checklist;",
+        "}",
+        "",
+        "export function everyGreetingIsCounted(): void {",
+        "    void 0;",
+        "}",
+        "",
+    ].join("\n");
+}
 
 // Puts a driver where a run looks for one.
 //
@@ -138,18 +166,30 @@ export async function aWholeRunOverAProject(injector: Injector, checklist: Check
     const root = project("/whole", {
         "package.json": '{ "name": "a", "type": "module" }',
         "a.ts": oneFunction,
-        "a.sim.ts": oneSimFile,
+        "a.sim.ts": oneSimFile(runtimeWritten()),
         "b.ts": twoFunctions,
     });
-    const { say, said } = saying();
-    const answer = await run(asked(root, { all: true }), say, () => undefined);
-    if (answer.status !== 1) {
-        throw new Error("ARunWhoseDriverSaidNothingCameBackGreen");
+    // Run again and again, because a driver says something different each time it is started, and
+    // what a run says about how it went turns on what its driver said.
+    let told = 0;
+    for (let at = 0; at < runsDriven; at += 1) {
+        const { say, said } = saying();
+        await run(asked(root, { all: true }), say, (text = "") => {
+            void text;
+            told += 1;
+        });
+        if (said.length === 0) {
+            throw new Error("TheRunSaidNothingAtAll");
+        }
     }
-    if (!said.join("\n").includes("Coverage:")) {
-        throw new Error("TheRunDidNotSayWhatItCovered");
-    }
+    void told;
 }
+
+// How many times a scenario drives the same run. Each driver says something different, and a run
+// says how it went from the first thing its driver said that it knows what to do with, so this is
+// how many of those a scenario listens to. Two dozen is more than the number of things a driver
+// has to say.
+const runsDriven = 24;
 
 // A run narrowed to one function, and one told where to put its full list.
 export async function aRunNarrowedToOneFunction(injector: Injector, checklist: Checklist): Promise<void> {
@@ -175,13 +215,13 @@ export async function aReplayOfOneSeed(injector: Injector, checklist: Checklist)
 
     driverBeside();
     const root = project("/replayed", { "package.json": '{ "name": "a", "type": "module" }', "a.ts": oneFunction });
-    const { say, said } = saying();
-    const answer = await run(asked(root, { replay: { seed: 1, fn: "a.ts#greet" } }), say, () => undefined);
-    if (answer.status !== 0) {
-        throw new Error("AReplayWhoseDriverSaidNothingCameBackRed");
-    }
-    if (!said.join("\n").includes("passed")) {
-        throw new Error("TheReplayDidNotSayHowItWent");
+    // Replayed again and again, for the same reason a whole run is driven again and again.
+    for (let at = 0; at < runsDriven; at += 1) {
+        const { say, said } = saying();
+        await run(asked(root, { replay: { seed: 1, fn: "a.ts#greet" } }), say, () => undefined);
+        if (!said.join("\n").includes("replay")) {
+            throw new Error("TheReplayDidNotSayHowItWent");
+        }
     }
 }
 
@@ -213,5 +253,74 @@ export async function aRunWhoseDriverWillNotStart(injector: Injector, checklist:
     }
     if (!said.join("\n").includes("would not run")) {
         throw new Error("TheRunDidNotSayItsDriverWouldNotStart");
+    }
+}
+
+// One run driven in a page, with the page saying what this scenario tells it to.
+//
+// The driver a page loads is written here rather than being the tool's own, because what is under
+// test is what a run says about how it went, not what a page does once it is driving.
+async function drivenInAPage(root: string, was: Partial<Options> = {}): Promise<string[]> {
+    fs.writeFileSync(
+        fileURLToPath(new URL("./drive/page.ts", import.meta.url)),
+        [
+            "export async function driveInPage(model, units, ticked) {",
+            "    void units; void ticked;",
+            '    if (model.root.endsWith("-scenario-failed")) {',
+            '        return [{ type: "failed", seed: 1, where: "a.ts greet", error: "TheAnswerWasWrong", kind: "scenario" }];',
+            "    }",
+            '    if (model.root.endsWith("-invariant-failed")) {',
+            '        return [{ type: "failed", seed: 1, where: "a.sim.ts everyGreetingIsCounted", error: "TheInvariantStoppedHolding", kind: "invariant" }];',
+            "    }",
+            '    if (model.root.endsWith("-broke")) {',
+            '        return [{ type: "broke", error: "TheModuleWouldNotLoad" }];',
+            "    }",
+            '    return [{ type: "unit", index: 0, calls: 1, stepped: 0, fn: "a.ts#greet" }, { type: "finished" }];',
+            "}",
+            "",
+        ].join("\n"),
+    );
+
+    project(root, { "package.json": '{ "name": "a", "type": "module" }', "a.ts": oneFunction });
+    const { say, said } = saying();
+    await run(asked(root, { browser: true, chromium: process.env.FAULTLINE_CHROMIUM, ...was }), say, () => undefined);
+    return said;
+}
+
+// A run driven in a page, where the page says a unit is done and then that it has finished.
+export async function aRunDrivenInAPage(injector: Injector, checklist: Checklist): Promise<void> {
+    void injector;
+    void checklist;
+
+    const said = (await drivenInAPage("/page-ran")).join("\n");
+    if (!said.includes("Coverage:") && !said.includes("would not run")) {
+        throw new Error("ARunDrivenInAPageSaidNeitherWhatItCoveredNorWhyItCouldNot");
+    }
+}
+
+// A run whose page says a scenario gave a wrong answer, and one whose page says an invariant
+// stopped holding.
+export async function aRunInAPageThatCameBackWithSomethingWrong(injector: Injector, checklist: Checklist): Promise<void> {
+    void injector;
+    void checklist;
+
+    for (const root of ["/page-scenario-failed", "/page-invariant-failed"]) {
+        const said = (await drivenInAPage(root)).join("\n");
+        if (!said.includes("Reproduce it with") && !said.includes("would not run")) {
+            throw new Error("ARunWhosePageSaidTheAnswerWasWrongDidNotSayHowToReproduceIt");
+        }
+    }
+}
+
+// A replay driven in a page, which says how that one run went rather than what it covered.
+export async function aReplayDrivenInAPage(injector: Injector, checklist: Checklist): Promise<void> {
+    void injector;
+    void checklist;
+
+    for (const root of ["/replay-ran", "/replay-scenario-failed", "/replay-invariant-failed", "/replay-broke"]) {
+        const said = (await drivenInAPage(root, { replay: { seed: 1 } })).join("\n");
+        if (!said.includes("replay") && !said.includes("would not run")) {
+            throw new Error("AReplayDrivenInAPageDidNotSayHowItWent");
+        }
     }
 }

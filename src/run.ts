@@ -107,10 +107,8 @@ export async function run(options: Options, say: Say, progress: Say): Promise<Ru
     const onlyFn = options.replay?.fn ?? options.fn;
 
     for (const one of wanted) {
-        const source = built.program.getSourceFile(one.full);
-        if (source === undefined) {
-            continue;
-        }
+        // The program was built over exactly these files, so it holds each of them.
+        const source = built.program.getSourceFile(one.full)!;
         const facts = readFile(context, source, one.file);
         const keeps = (label: string): boolean => {
             if (onlyFn === undefined) {
@@ -134,11 +132,10 @@ export async function run(options: Options, say: Say, progress: Say): Promise<Ru
     }
 
     for (const [simFile, full] of wantedSims) {
-        const source = built.program.getSourceFile(full);
-        const where = emitted.modules.get(simFile);
-        if (source === undefined || where === undefined) {
-            continue;
-        }
+        // The program was built over the sim files as well, and each one was copied, so both are
+        // there to be had.
+        const source = built.program.getSourceFile(full)!;
+        const where = emitted.modules.get(simFile)!;
         simModules[simFile] = where;
         const facts = readFile(context, source, simFile);
         factories.push(...facts.factories);

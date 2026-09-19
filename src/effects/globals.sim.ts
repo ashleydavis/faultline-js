@@ -9,7 +9,7 @@
 // at all, rather than what it answers with.
 
 import type { Checklist, Injector } from "faultline";
-import { runWith } from "./current.ts";
+import { runWith, startDriving, stopDriving } from "./current.ts";
 import { installGlobals, realNow, removeGlobals } from "./globals.ts";
 import { RunSubject } from "./subject.ts";
 
@@ -59,12 +59,15 @@ export async function everyGlobalWithARunInFlight(injector: Injector, checklist:
 
 // Every replaced global read with no run in flight.
 //
-// Nothing puts one there: this file's own copy holds the run, and until something sets it the
-// replacements fall through to what they were given.
+// This file's own copy holds which run is in flight, and the driving is stopped here so that copy
+// holds none. A scenario in another sim file puts one there, and without this the replacements
+// would find that one and never fall through to what they were given.
 export async function everyGlobalWithNoRunInFlight(injector: Injector, checklist: Checklist): Promise<void> {
     void injector;
     void checklist;
 
+    const held = runWith(undefined);
+    stopDriving();
     installGlobals();
     try {
         if (typeof Date.now() !== "number") {
@@ -88,7 +91,9 @@ export async function everyGlobalWithNoRunInFlight(injector: Injector, checklist
         if (crypto.getRandomValues(new Uint8Array(8)).length !== 8) {
             throw new Error("TheBytesWereNotHandedBack");
         }
-        if (!((await fetch("https://example.com/")) instanceof Response)) {
+        // A URL carrying its own answer, because with no run in flight this is the machine's own
+        // fetch and a run reaches no network of its own accord.
+        if (!((await fetch("data:text/plain,ok")) instanceof Response)) {
             throw new Error("TheNetworkDidNotAnswer");
         }
         await new Promise<void>((settle) => {
@@ -101,6 +106,8 @@ export async function everyGlobalWithNoRunInFlight(injector: Injector, checklist
     }
     finally {
         removeGlobals();
+        startDriving();
+        runWith(held);
     }
 }
 
@@ -244,6 +251,20 @@ export async function theWaysAPageReachesTheNetwork(injector: Injector, checklis
         await opened(global);
         subject.injector.fail("net", "bad-body");
         await opened(global);
+
+        // And one opened with no run in flight, which is the page's own socket rather than this
+        // run's. It is only opened and closed: what answers it is the machine's, and waiting on
+        // that would be waiting on a socket this run never opened.
+        const without = runWith(undefined);
+        stopDriving();
+        try {
+            const Held = global.WebSocket as new (url: string) => { close: () => void };
+            new Held("wss://example.com/").close();
+        }
+        finally {
+            startDriving();
+            runWith(without);
+        }
     }
     finally {
         runWith(held);
