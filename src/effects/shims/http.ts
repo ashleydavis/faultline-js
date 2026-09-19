@@ -171,6 +171,11 @@ class Server extends EventEmitter {
     constructor(handler?: (request: unknown, response: unknown) => void) {
         super();
         this.handler = handler;
+        if (handler !== undefined) {
+            // The runtime registers what `createServer` was given as a listener for a request, and
+            // so does this, so a server answers the one way whichever it was given.
+            this.on("request", handler);
+        }
     }
 
     // Takes the address the caller asked for and tells it the server is up, without a socket being
@@ -180,8 +185,33 @@ class Server extends EventEmitter {
         if (done !== undefined) {
             queueMicrotask(done);
         }
-        queueMicrotask(() => this.emit("listening"));
+        queueMicrotask(() => {
+            this.emit("listening");
+            this.takeRequests();
+        });
         return this;
+    }
+
+    // Takes the requests the run made up, once the server is up.
+    //
+    // A project that writes a handler for a request is handed none by a server that opens no
+    // socket, so every line inside the handler went unreached. The paths asked for are the strings
+    // the file being measured names, so a handler that answers one path one way and another
+    // another way is asked for each of them.
+    private takeRequests(): void {
+        for (const asked of nowRunning()?.events.texts() ?? []) {
+            if (this.listenerCount("request") === 0) {
+                return;
+            }
+            try {
+                this.emit("request", new ServerRequest(asked), new ServerAnswer());
+            }
+            catch {
+                // A handler that throws on one made up request stops that request and no more. The
+                // lines it ran before it threw are the ones this is after, and each request after
+                // it has lines of its own to reach.
+            }
+        }
     }
 
     // Shuts the server down, which takes nothing down because nothing was opened.
@@ -198,12 +228,78 @@ class Server extends EventEmitter {
     }
 }
 
+// One request a server took, as `node:http` hands it to a handler.
+class ServerRequest extends Readable {
+    // What the request asked for.
+    readonly url: string;
+
+    // How it asked for it.
+    readonly method = "GET";
+
+    // What it sent with it.
+    readonly headers: Record<string, string> = { host: "127.0.0.1", "content-type": "application/json" };
+
+    constructor(url: string) {
+        super();
+        this.url = url;
+    }
+
+    override _read(): void {
+        this.push(null);
+    }
+}
+
+// What a handler writes its answer to. What is written goes nowhere: no socket was opened, and the
+// answer is read by whoever asked for it in the code under test rather than sent.
+class ServerAnswer extends EventEmitter {
+    // The status the handler set, which starts at what the runtime starts it at.
+    statusCode = 200;
+
+    // Whether the head has gone, so a handler that reads it back reads what it would read.
+    headersSent = false;
+
+    // What the handler set, by name.
+    private readonly headers: Record<string, unknown> = {};
+
+    // Writes the status and the headers.
+    writeHead(status: number, headers?: Record<string, unknown>): this {
+        this.statusCode = status;
+        Object.assign(this.headers, headers ?? {});
+        this.headersSent = true;
+        return this;
+    }
+
+    // Sets one header.
+    setHeader(name: string, value: unknown): this {
+        this.headers[name.toLowerCase()] = value;
+        return this;
+    }
+
+    // Reads one back.
+    getHeader(name: string): unknown {
+        return this.headers[name.toLowerCase()];
+    }
+
+    // Takes part of the body, which goes nowhere.
+    write(): boolean {
+        return true;
+    }
+
+    // Ends the answer, which is what a handler does last.
+    end(): this {
+        this.headersSent = true;
+        this.emit("finish");
+        this.emit("close");
+        return this;
+    }
+}
+
 export function createServer(options?: unknown, handler?: unknown): Server {
     const found = (typeof options === "function" ? options : handler) as ((request: unknown, response: unknown) => void) | undefined;
     return new Server(found);
 }
 
-export { ClientRequest, IncomingMessage, Server };
+export { ClientRequest, IncomingMessage, Server, ServerAnswer, ServerRequest };
 
 // The status codes `node:http` carries, for code that reads one off the module.
 export const STATUS_CODES: Record<number, string> = { 200: "OK", 404: "Not Found", 500: "Internal Server Error" };

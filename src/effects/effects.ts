@@ -182,6 +182,16 @@ export class RunEvents {
         this.turn = turn;
     }
 
+    // The text a replacement puts where a caller reads one, such as the path a request asked for.
+    //
+    // A path a handler answers one way and another path another way is written in the file, so the
+    // file's own strings are what a run asks for. A file that names none is asked for the root,
+    // because a server with no request at all leaves its handler unrun.
+    texts(): string[] {
+        const out = this.values.filter((one) => typeof one === "string");
+        return out.length === 0 ? ["/"] : out;
+    }
+
     // The messages one call sends.
     //
     // Each message puts one value the file tests against under one property it reads, and fills the

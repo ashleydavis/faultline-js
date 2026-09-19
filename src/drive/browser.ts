@@ -4,7 +4,6 @@
 // coverage that comes back is the same V8 reports in Node, so everything past this point is shared.
 
 import fs from "node:fs";
-import http from "node:http";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
@@ -43,8 +42,12 @@ const types: Record<string, string> = {
 };
 
 // The little of Playwright this uses, written out so the tool builds without it installed.
+//
+// Every wall clock limit is turned off. A run replaces the timers underneath the code it is
+// measuring, so a limit of any length at all goes off at once while a run is driving this file, and
+// a limit is not what says whether a page got anywhere.
 interface Chromium {
-    launch: (options: { executablePath?: string }) => Promise<{
+    launch: (options: { executablePath?: string; timeout?: number }) => Promise<{
         newPage: () => Promise<Page>;
         close: () => Promise<void>;
     }>;
@@ -53,9 +56,19 @@ interface Chromium {
 // The little of a page this uses.
 interface Page {
     context: () => { newCDPSession: (page: Page) => Promise<Session> };
+    setDefaultTimeout: (after: number) => void;
+    setDefaultNavigationTimeout: (after: number) => void;
     exposeFunction: (name: string, work: (...args: never[]) => unknown) => Promise<void>;
+    route: (pattern: string, answer: (route: Route) => Promise<void> | void) => Promise<void>;
     goto: (url: string) => Promise<unknown>;
     evaluate: <T>(body: string) => Promise<T>;
+}
+
+// The little of one intercepted request this uses. The page asks for the copies by the paths the
+// model names, and each request is answered here rather than over a socket.
+interface Route {
+    request: () => { url: () => string };
+    fulfill: (answer: { status: number; contentType?: string; body?: Buffer | string }) => Promise<void>;
 }
 
 // The little of a debugging session this uses. It is what lets the run read what V8 has counted
@@ -141,19 +154,24 @@ export function serveOne(work: string, url: string | undefined): Answer {
     }
 }
 
-// Serves the work directory, so the page loads the copies by the paths the model names.
-export function serve(work: string): Promise<{ port: number; close: () => void }> {
-    const server = http.createServer((request, response) => {
-        const answer = serveOne(work, request.url);
-        response.writeHead(answer.status, answer.type === undefined ? undefined : { "content-type": answer.type });
-        response.end(answer.body);
-    });
-    return new Promise((settle) => {
-        server.listen(0, "127.0.0.1", () => {
-            const address = server.address();
-            const port = typeof address === "object" && address !== null ? address.port : 0;
-            settle({ port, close: () => server.close() });
-        });
+// Where the page thinks it came from.
+//
+// No socket is opened and no name is looked up: every request the page makes is answered inside
+// this process, and this is only the address the page reads its own paths against. `.invalid` is
+// the name reserved for a name that resolves to nothing, so a request that somehow escaped would
+// reach no machine.
+const pageOrigin = "http://faultline.invalid";
+
+// Answers every request the page makes out of the work directory.
+//
+// The copies used to be served over a socket on the loopback address. Answering inside the process
+// needs no port, no server and no shutting down, and it is what lets a run measuring this file
+// drive a page at all: a run replaces the module that opens a socket, so a server started under one
+// listens nowhere.
+async function answerWith(page: Page, work: string): Promise<void> {
+    await page.route("**/*", async (route) => {
+        const answer = serveOne(work, new URL(route.request().url()).pathname);
+        await route.fulfill({ status: answer.status, contentType: answer.type, body: answer.body });
     });
 }
 
@@ -191,21 +209,27 @@ export async function driveInBrowser(
     // container with one already installed does.
     const wanted = executablePath ?? process.env.FAULTLINE_CHROMIUM;
 
-    const served = await serve(model.work);
     let browser;
     try {
-        browser = await chromium.launch(wanted === undefined ? {} : { executablePath: wanted });
+        // Playwright throws an Error and throws nothing else, so its message is what there is to
+        // print.
+        browser = await chromium.launch(wanted === undefined ? { timeout: 0 } : { executablePath: wanted, timeout: 0 });
     }
     catch (thrown) {
-        served.close();
         return {
             said: [],
             scripts: [],
-            broke: `The browser would not start: ${thrown instanceof Error ? thrown.message : String(thrown)}`,
+            broke: `The browser would not start: ${(thrown as Error).message}`,
         };
     }
     try {
         const page = await browser.newPage();
+        // Playwright gives up on a page that takes longer than its own wall clock allows. A run
+        // decides how long its own work takes, and the one call that does the driving has no such
+        // limit to begin with, so the rest are turned off and the run waits for the page as long as
+        // the page takes.
+        page.setDefaultTimeout(0);
+        page.setDefaultNavigationTimeout(0);
         const watcher = await page.context().newCDPSession(page);
         await watcher.send("Profiler.enable");
         // The same counting the Node side starts: a count per block rather than a yes or no per
@@ -215,20 +239,22 @@ export async function driveInBrowser(
         // Everything the page has counted, added up across every reading. Taking coverage resets
         // V8's counters, so a reading is what has run since the last one.
         const counted = new Map<string, ScriptCoverage>();
-        const served_at = `http://127.0.0.1:${served.port}/`;
+        const cameFrom = `${pageOrigin}/`;
 
         // Reads what the page has counted since the last reading and adds it to the total. The page
         // loaded the copies over a server, so V8 names them by the address they came from, and
         // everything past here knows them by where they sit on disk.
         async function take(): Promise<void> {
-            const answer = await watcher.send("Profiler.takePreciseCoverage");
+            // Reading the counters always carries a result. The other calls this makes carry none,
+            // which is why the one type covering them all says it may be missing.
+            const answer = (await watcher.send("Profiler.takePreciseCoverage")).result!;
             addInto(
                 counted,
-                (answer.result ?? [])
-                    .filter((script) => script.url.startsWith(served_at) && !script.url.includes(driverDirectory))
+                answer
+                    .filter((script) => script.url.startsWith(cameFrom) && !script.url.includes(driverDirectory))
                     .map((script) => ({
                         ...script,
-                        url: pathToFileURL(path.join(model.work, script.url.slice(served_at.length))).href,
+                        url: pathToFileURL(path.join(model.work, script.url.slice(cameFrom.length))).href,
                     })),
             );
         }
@@ -241,7 +267,8 @@ export async function driveInBrowser(
             return (held?.paths ?? []).filter((site) => didRun(site, counts)).map((site) => site.name);
         });
 
-        await page.goto(`http://127.0.0.1:${served.port}/`);
+        await answerWith(page, model.work);
+        await page.goto(`${pageOrigin}/`);
 
         // The page fetches the run and the work rather than being handed them, so nothing large
         // crosses as an argument.
@@ -261,11 +288,10 @@ export async function driveInBrowser(
         return {
             said: [],
             scripts: [],
-            broke: `The run in the browser stopped: ${thrown instanceof Error ? thrown.message : String(thrown)}`,
+            broke: `The run in the browser stopped: ${(thrown as Error).message}`,
         };
     }
     finally {
         await browser.close();
-        served.close();
     }
 }

@@ -116,6 +116,16 @@ function runtimeFor(model: RunModel, ticked: Set<string>): Runtime {
                 return;
             }
             lastSent = now;
+            // Says this run is still going, so another run started while this one is driving leaves
+            // this one's work directory where it is. A run longer than the grace had its copies
+            // taken out from under it, and the driver then had no directory to start in.
+            try {
+                fs.utimesSync(model.work, new Date(), new Date());
+            }
+            catch {
+                // A directory that cannot be touched is one this run is about to fail over anyway,
+                // and failing here would lose what it counted.
+            }
             say({ type: "coverage", scripts: await takeCoverage(model.work) });
         },
         reached: async (file) => {

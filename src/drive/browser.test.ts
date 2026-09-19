@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { optionsFor } from "../build/program.ts";
-import { driverDirectory, emitDriver, pageDriver, serve } from "./browser.ts";
+import { driverDirectory, emitDriver, pageDriver, serveOne } from "./browser.ts";
 
 // A directory of its own for one test.
 function scratch(): string {
@@ -55,51 +55,40 @@ test("the driver reaches for nothing only Node has", () => {
     fs.rmSync(work, { recursive: true, force: true });
 });
 
-test("the server hands back a copy as JavaScript, so a browser will run it", async () => {
+test("the answer to a copy is JavaScript, so a browser will run it", () => {
     const work = scratch();
     fs.writeFileSync(path.join(work, "a.mjs"), "export const a = 1;\n");
-    const served = await serve(work);
-    const answer = await fetch(`http://127.0.0.1:${served.port}/a.mjs`);
-    assert.equal(answer.headers.get("content-type"), "text/javascript");
-    assert.equal(await answer.text(), "export const a = 1;\n");
-    served.close();
+    const answer = serveOne(work, "/a.mjs");
+    assert.equal(answer.type, "text/javascript");
+    assert.equal(String(answer.body), "export const a = 1;\n");
     fs.rmSync(work, { recursive: true, force: true });
 });
 
-test("the server hands back a page at the root, so a run has somewhere to load into", async () => {
+test("the answer at the root is a page, so a run has somewhere to load into", () => {
     const work = scratch();
-    const served = await serve(work);
-    const answer = await fetch(`http://127.0.0.1:${served.port}/`);
-    assert.match(answer.headers.get("content-type") ?? "", /text\/html/);
-    assert.match(await answer.text(), /<!doctype html>/);
-    served.close();
+    const answer = serveOne(work, "/");
+    assert.match(answer.type ?? "", /text\/html/);
+    assert.match(String(answer.body), /<!doctype html>/);
     fs.rmSync(work, { recursive: true, force: true });
 });
 
-test("a file the work directory does not have comes back as missing", async () => {
+test("a file the work directory does not have comes back as missing", () => {
     const work = scratch();
-    const served = await serve(work);
-    assert.equal((await fetch(`http://127.0.0.1:${served.port}/gone.mjs`)).status, 404);
-    served.close();
+    assert.equal(serveOne(work, "/gone.mjs").status, 404);
     fs.rmSync(work, { recursive: true, force: true });
 });
 
-test("a path that climbs out of the work directory is refused", async () => {
+test("a path that climbs out of the work directory is refused", () => {
     const work = scratch();
-    const served = await serve(work);
-    const answer = await fetch(`http://127.0.0.1:${served.port}/..%2F..%2Fetc%2Fpasswd`);
-    assert.equal(answer.status, 403);
-    served.close();
+    assert.equal(serveOne(work, "/..%2F..%2Fetc%2Fpasswd").status, 403);
     fs.rmSync(work, { recursive: true, force: true });
 });
 
-test("the model a run wrote is served, because the page reads it rather than being handed it", async () => {
+test("the model a run wrote is answered with, because the page reads it rather than being handed it", () => {
     const work = scratch();
     fs.writeFileSync(path.join(work, "model.json"), '{"seeds":[1]}');
-    const served = await serve(work);
-    const answer = await fetch(`http://127.0.0.1:${served.port}/model.json`);
-    assert.equal(answer.headers.get("content-type"), "application/json");
-    assert.deepEqual(await answer.json(), { seeds: [1] });
-    served.close();
+    const answer = serveOne(work, "/model.json");
+    assert.equal(answer.type, "application/json");
+    assert.deepEqual(JSON.parse(String(answer.body)) as unknown, { seeds: [1] });
     fs.rmSync(work, { recursive: true, force: true });
 });

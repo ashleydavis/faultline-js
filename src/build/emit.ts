@@ -109,7 +109,7 @@ export function removeOldRuns(inside = os.tmpdir()): void {
     const now = realNow();
     const byAge = held
         .map((one) => path.join(inside, one))
-        .map((one) => ({ one, at: madeAt(one) }))
+        .map((one) => ({ one, at: writtenAt(one) }))
         .filter((held_) => held_.at > 0 && now - held_.at > stillInUse)
         .sort((left, right) => right.at - left.at);
     for (const { one } of byAge.slice(keptRuns)) {
@@ -122,8 +122,11 @@ export function removeOldRuns(inside = os.tmpdir()): void {
     }
 }
 
-// When one work directory was made, or nothing when it cannot be told.
-function madeAt(where: string): number {
+// When one work directory was last written to, or nothing when it cannot be told.
+//
+// A run touches its own directory every time its driver sends what it has counted, so a run that
+// has been going for an hour is as recent as one that started a minute ago.
+function writtenAt(where: string): number {
     try {
         return fs.statSync(where).mtimeMs;
     }

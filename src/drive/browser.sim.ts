@@ -4,8 +4,12 @@
 // rather than a made up value. Starting the browser itself is not here: it needs a browser.
 
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import type { Checklist, Injector } from "faultline";
-import { serveOne } from "./browser.ts";
+import type { RunModel } from "../model.ts";
+import { driveInBrowser, emitDriver, serveOne } from "./browser.ts";
+import { askedFromPage } from "./protocol.ts";
 
 // Every answer one path can get.
 export function everyAnswerAPathGets(injector: Injector, checklist: Checklist): void {
@@ -60,5 +64,145 @@ export function everyAnswerAPathGets(injector: Injector, checklist: Checklist): 
     injector.fail("files", "missing");
     if (serveOne(work, "/never-written.mjs").status !== 404) {
         throw new Error("APathThatCannotBeReadWasServed");
+    }
+}
+
+// The driver a page loads, written out as modules a browser can load.
+export function theDriverAPageLoads(injector: Injector, checklist: Checklist): void {
+    void injector;
+    void checklist;
+
+    // The driver sits beside the module that writes it out, and a copy of the tool has none beside
+    // it, so one is written there. It imports another file twice, so the writing follows an import
+    // and knows a file it has already written.
+    const beside = (name: string): string => fileURLToPath(new URL(`./${name}`, import.meta.url));
+    fs.writeFileSync(
+        beside("page.ts"),
+        ['import { one } from "./held.ts";', 'import { two } from "./held.ts";', "export const driven = one + two;", ""].join("\n"),
+    );
+    fs.writeFileSync(beside("held.ts"), "export const one = 1;\nexport const two = 2;\n");
+
+    emitDriver("/emitted", { target: ts.ScriptTarget.ES2022 });
+    if (!fs.existsSync("/emitted")) {
+        throw new Error("TheDriverWasNotWrittenIntoTheWorkDirectory");
+    }
+}
+
+// A copy of the tool with no driver beside it, which says what to do about it.
+export function aCopyWithNoDriverBesideIt(injector: Injector, checklist: Checklist): void {
+    void injector;
+    void checklist;
+
+    const page = fileURLToPath(new URL("./page.ts", import.meta.url));
+    if (fs.existsSync(page)) {
+        fs.rmSync(page);
+    }
+    let said = "";
+    try {
+        emitDriver("/none", { target: ts.ScriptTarget.ES2022 });
+    }
+    catch (thrown) {
+        said = (thrown as Error).message;
+    }
+    if (!said.includes("not found")) {
+        throw new Error("ACopyWithNoPageDriverBesideItDidNotSaySo");
+    }
+}
+
+// Driving a real page, from writing the driver out to reading what the page counted.
+//
+// Every request the page makes is answered inside this process, so a run measuring this file drives
+// a page without a socket being opened. The driver the page loads is written by this scenario
+// rather than being the tool's own: what is under test here is the driving, not what the page does
+// once it is driving.
+export async function drivingARealPage(injector: Injector, checklist: Checklist): Promise<void> {
+    void injector;
+    void checklist;
+
+    const beside = (name: string): string => fileURLToPath(new URL(`./${name}`, import.meta.url));
+    fs.writeFileSync(
+        beside("page.ts"),
+        [
+            "export async function driveInPage(model, units, ticked) {",
+            "    void model; void units; void ticked;",
+            // The page loads a copy, so what the page counted has a copy in it to be counted
+            // against, and asks what has run, which is what the run answers from outside the page.
+            '    const held = await import("/held.mjs");',
+            "    held.greet(\"a\");",
+            `    await window[${JSON.stringify(askedFromPage)}]("held.ts");`,
+            // And about a file the run has none of, which is what a page asking about its own sim
+            // file does.
+            `    await window[${JSON.stringify(askedFromPage)}]("not-there.ts");`,
+            '    return [{ type: "unit", index: 0, calls: 1, stepped: 0 }];',
+            "}",
+            "",
+        ].join("\n"),
+    );
+
+    const work = "/driven-page";
+    emitDriver(work, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext });
+    fs.writeFileSync(`${work}/model.json`, "{}");
+    fs.writeFileSync(`${work}/held.mjs`, "export function greet(name) {\n    return name.length;\n}\n");
+
+    const model = {
+        root: "/project",
+        work,
+        files: [
+            {
+                file: "held.ts",
+                module: `${work}/held.mjs`,
+                functions: [],
+                classes: [],
+                paths: [{ name: "greet:entered", describe: "the body of greet", file: "held.ts", line: 2, fn: "greet", at: { line: 2, column: 4 } }],
+                tests: [],
+                properties: [],
+            },
+        ],
+        factories: [],
+        scenarios: [],
+        invariants: [],
+        simModules: {},
+        unseen: [],
+        seeds: [1],
+        callBudget: 200,
+    } as unknown as RunModel;
+
+    // The machine's own browser is named where there is one, and a run with none named falls back
+    // to whatever Playwright installed.
+    const named = process.env.FAULTLINE_CHROMIUM;
+    delete process.env.FAULTLINE_CHROMIUM;
+    let done;
+    try {
+        done = await driveInBrowser(model, [], [], named);
+        // And again with no browser named at all, which is the ordinary way it is run.
+        await driveInBrowser(model, [], [], undefined);
+    }
+    finally {
+        if (named !== undefined) {
+            process.env.FAULTLINE_CHROMIUM = named;
+        }
+    }
+    if (done.broke !== undefined) {
+        // A machine with no browser on it says so, and that is the answer rather than a failure.
+        // A machine with no browser on it says so, and that is the answer rather than a failure.
+        if (!done.broke.includes("Playwright") && !done.broke.includes("would not start")) {
+            throw new Error("TheDrivingStoppedForSomethingOtherThanAMissingBrowser");
+        }
+        return;
+    }
+    if (done.said.length !== 1) {
+        throw new Error("TheDrivingDidNotBringBackWhatThePageSaid");
+    }
+}
+
+// Driving with a browser that will not start, which is what a machine with none installed does.
+export async function drivingWithNoBrowserToDriveIn(injector: Injector, checklist: Checklist): Promise<void> {
+    void injector;
+    void checklist;
+
+    const model = { root: "/project", work: "/no-browser", files: [], factories: [], scenarios: [], invariants: [], simModules: {}, unseen: [], seeds: [1], callBudget: 200 } as unknown as RunModel;
+    const done = await driveInBrowser(model, [], [], "/there-is-no-browser-here");
+    if (done.broke === undefined) {
+        throw new Error("DrivingWithNoBrowserToDriveInDidNotSaySo");
     }
 }

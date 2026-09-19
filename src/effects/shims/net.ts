@@ -95,8 +95,37 @@ class Server extends EventEmitter {
         if (done !== undefined) {
             queueMicrotask(done);
         }
-        queueMicrotask(() => this.emit("listening"));
+        queueMicrotask(() => {
+            this.emit("listening");
+            this.takeConnections();
+        });
         return this;
+    }
+
+    // Takes the connections the run made up, once the server is up.
+    //
+    // A project that writes a handler for a connection is handed none by a server that opens no
+    // socket, so every line inside the handler went unreached. One connection is taken per string
+    // the file being measured names, and each sends that string, so a handler that reads what came
+    // in and turns on it is given each of them.
+    private takeConnections(): void {
+        for (const said of nowRunning()?.events.texts() ?? []) {
+            if (this.listenerCount("connection") === 0) {
+                return;
+            }
+            const socket = new Socket();
+            try {
+                this.emit("connection", socket);
+                socket.emit("data", Buffer.from(said));
+                socket.emit("end");
+                socket.emit("close");
+            }
+            catch {
+                // A handler that throws on one made up connection stops that connection and no
+                // more. The lines it ran before it threw are the ones this is after, and each
+                // connection after it has lines of its own to reach.
+            }
+        }
     }
 
     close(done?: () => void): this {

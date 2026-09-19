@@ -27,6 +27,7 @@ const held = {
         throw new Error("ThisIsWhatCodeUnderTestDoes");
     },
     handsBackAnObject: () => ({ held: () => 1, also: 2 }),
+    handsBackSomethingHoldingSomething: () => ({ inner: () => ({ deeper: () => 1 }) }),
     handsBackAList: () => [1, 2],
     Made: class Made {
         private kept = 0;
@@ -63,6 +64,10 @@ const held = {
             return a;
         }
 
+        async alsoRejects(): Promise<never> {
+            throw new Error("ThisIsWhatCodeUnderTestDoes");
+        }
+
         static get onTheClassRead(): number {
             return 1;
         }
@@ -74,6 +79,15 @@ const held = {
     Refuses: class Refuses {
         constructor() {
             throw new Error("ThisConstructorRefusesWhatItWasGiven");
+        }
+    },
+    anAsyncScenario: async (one: Injector, two: Checklist): Promise<void> => {
+        one.failures("net");
+        two.ticked("a");
+    },
+    MakesThings: class MakesThings {
+        make(): { name: string } {
+            return { name: "a" };
         }
     },
     aScenario: (one: Injector, two: Checklist): void => {
@@ -126,6 +140,7 @@ const functions: FunctionInfo[] = [
     fn("kept", { how: "export", name: "__flt.kept" }, [{ name: "a", optional: false, rest: false, recipe: { kind: "string" } }]),
     { label: "inside", file: "held.ts", line: 1, async: false, parameters: [], within: "plain", reach: { how: "inside", because: "it is written inside another function, so only that function reaches it" } },
     fn("handsBackAnObject", { how: "export", name: "handsBackAnObject" }),
+    fn("handsBackSomethingHoldingSomething", { how: "export", name: "handsBackSomethingHoldingSomething" }),
     fn("handsBackAList", { how: "export", name: "handsBackAList" }),
     fn("needsSomething", { how: "export", name: "plain" }, [{ name: "a", optional: false, rest: false, recipe: { kind: "unknown", text: "symbol" } }]),
     fn("takesTheRest", { how: "export", name: "plain" }, [{ name: "a", optional: false, rest: true, recipe: { kind: "string" } }]),
@@ -137,6 +152,8 @@ const functions: FunctionInfo[] = [
     fn("Made.refuses", { how: "method", className: "Made", classExport: "Made", name: "refuses", onClass: false, accessor: "none" }),
     fn("Made.also", { how: "method", className: "Made", classExport: "Made", name: "also", onClass: false, accessor: "none" }, [{ name: "a", optional: false, rest: false, recipe: { kind: "string" } }]),
     fn("Made.alsoWaits", { how: "method", className: "Made", classExport: "Made", name: "alsoWaits", onClass: false, accessor: "none" }, [{ name: "a", optional: false, rest: false, recipe: { kind: "string" } }]),
+    fn("Made.alsoRejects", { how: "method", className: "Made", classExport: "Made", name: "alsoRejects", onClass: false, accessor: "none" }),
+    fn("Made.writeSomething", { how: "method", className: "Made", classExport: "Made", name: "read", onClass: false, accessor: "set" }, [{ name: "at", optional: false, rest: false, recipe: { kind: "unknown", text: "symbol" } }]),
     fn("Made.onTheClassRead", { how: "method", className: "Made", classExport: "Made", name: "onTheClassRead", onClass: true, accessor: "get" }),
     fn("Made.onTheClassWrite", { how: "method", className: "Made", classExport: "Made", name: "onTheClassRead", onClass: true, accessor: "set" }, [{ name: "at", optional: false, rest: false, recipe: { kind: "number" } }]),
     fn("Undeclared.method", { how: "method", className: "Undeclared", classExport: "Made", name: "method", onClass: false, accessor: "none" }, [{ name: "a", optional: false, rest: false, recipe: { kind: "string" } }]),
@@ -169,11 +186,17 @@ const model: RunModel = {
     root: "/root",
     work: "/work",
     files: [file],
-    factories: [{ key: "held.ts#Held", typeName: "Held", file: "held.sim.ts", exportName: "aFactory", parameters: [] }],
+    factories: [
+        { key: "held.ts#Held", typeName: "Held", file: "held.sim.ts", exportName: "aFactory", parameters: [] },
+        // A factory written as a method on a class the sim file exports, whose class takes no
+        // argument of its own.
+        { key: "held.ts#Other", typeName: "Other", file: "held.sim.ts", exportName: "MakesThings", method: "make", parameters: [] },
+    ],
     scenarios: [
         { file: "held.sim.ts", exportName: "aScenario", line: 1, module: "held.sim.mjs" },
         { file: "held.sim.ts", exportName: "aFailingScenario", line: 2, module: "held.sim.mjs" },
         { file: "held.sim.ts", exportName: "notThereAtAll", line: 3, module: "held.sim.mjs" },
+        { file: "held.sim.ts", exportName: "anAsyncScenario", line: 5, module: "held.sim.mjs" },
     ],
     invariants: [{ file: "held.sim.ts", exportName: "anInvariant", line: 4, module: "held.sim.mjs" }],
     simModules: { "held.sim.ts": "held.sim.mjs" },
@@ -411,4 +434,36 @@ export function aCallWithNoFactory(injector: Injector, checklist: Checklist): vo
     if (none.length !== 0) {
         throw new Error("TheEmptyListWasNotEmpty");
     }
+}
+
+// A scenario that hands back a promise, which the driving waits for before it says the unit is done.
+export async function aScenarioThatHandsBackAPromise(injector: Injector, checklist: Checklist): Promise<void> {
+    void injector;
+    void checklist;
+
+    const { runtime } = runtimeFor();
+    const at = model.scenarios.findIndex((one) => one.exportName === "anAsyncScenario");
+    if (!(await runUnit(runtime, model, { index: 0, kind: "scenario", seed: 1, faulting: false, scenario: at }, []))) {
+        throw new Error("TheScenarioThatHandsBackAPromiseStoppedTheRun");
+    }
+}
+
+// A function whose argument the run cannot build, driven over many turns, so the run asks for a
+// test input factory once rather than once a turn.
+export async function aValueTheRunCannotBuildOverManyTurns(injector: Injector, checklist: Checklist): Promise<void> {
+    void injector;
+    void checklist;
+
+    // Says nothing has run, so the unit works through its turns rather than stopping at the first.
+    const { runtime, said } = runtimeFor(async () => new Set<string>());
+    const at = functions.findIndex((one) => one.label === "needsSomething");
+    await runUnit(runtime, model, { index: 0, kind: "call", seed: 1, faulting: false, file: 0, fn: at }, []);
+    const first = said.find((one) => one.type === "unit");
+    if (first === undefined || first.type !== "unit" || first.cannotBuild === undefined) {
+        throw new Error("TheRunDidNotAskForATestInputFactory");
+    }
+
+    // A value written rather than read, which the run builds outright rather than standing in for.
+    const writing = functions.findIndex((one) => one.label === "Made.writeSomething");
+    await runUnit(runtime, model, { index: 1, kind: "call", seed: 1, faulting: false, file: 0, fn: writing }, []);
 }
