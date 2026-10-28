@@ -4,6 +4,12 @@ Faultline calls every function in your repository with chosen inputs, injects fa
 
 ## Step 1: Add the dependency
 
+To have an AI agent add Faultline and work through the report, point it at the [AI quick reference](https://github.com/ashleydavis/faultline-js/blob/main/docs/AI-QUICK-REF.md) by telling it:
+
+```
+Read https://raw.githubusercontent.com/ashleydavis/faultline-js/main/docs/AI-QUICK-REF.md and follow it to add Faultline to this project. Then follow its loop to 100% coverage until `npx flt` exits 0.
+```
+
 ```sh
 npm install --save-dev github:ashleydavis/faultline-js
 ```

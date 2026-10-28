@@ -1,24 +1,53 @@
-# Fault testing a repository with Faultline (the quick version)
+# AI quick reference: fault testing a repository with Faultline
 
-What a repository does to start using Faultline, in order. `USER-GUIDE.md` has the detail.
+What a repository does to start using Faultline, in order, written for an AI agent to follow. `USER-GUIDE.md` has the detail.
 
 ## 1. Add the dependency
 
+Lock it to a commit, so every install gets the same Faultline. Put the full commit hash after `#`.
+
+With npm:
+
 ```sh
-npm install --save-dev github:ashleydavis/faultline-js
+npm install --save-dev github:ashleydavis/faultline-js#<commit>
 ```
+
+With Bun:
+
+```sh
+bun add -d github:ashleydavis/faultline-js#<commit>
+bun pm trust faultline
+```
+
+Faultline is built when it is installed. Bun runs that build only for a dependency the project trusts, so `bun pm trust faultline` adds `"trustedDependencies": ["faultline"]` to your `package.json`. Without it there is no `flt` command.
 
 ## 2. Have Node 24 or later
 
 Node 24 or later is required. Faultline runs your code in Node, because V8 reports which code ran, whatever runtime your project uses in production. With an older Node, Faultline prints one sentence and exits 1.
 
+A Bun project needs Node beside Bun. With mise, lock both in `mise.toml`:
+
+```toml
+[tools]
+bun = "<version>"
+node = "<version>"
+```
+
 ## 3. Choose what Faultline tests
 
 Faultline reads your `tsconfig.json` for your types and how your imports resolve, and tests every JavaScript and TypeScript file it finds except `node_modules`, directories starting with a dot, `dist`, `build`, `out` and `coverage` at the root, `.d.ts` files, test files and sim files. These keys in `faultline.config.yaml`, a YAML file at your project root, are there when you want them: `include` names the files and directories to fault test and `exclude` names the files and directories to leave out, both as lists of paths relative to your project root (see `USER-GUIDE.md` for examples). Any other key, or a file that is not valid YAML, is refused with a sentence and exit 1.
 
-Use `exclude` for benchmarks and test harnesses. They are code, so Faultline takes them for source and asks you to cover their code paths too.
+Use `exclude` for every file that is not production code: test directories, mocks (`__mocks__`), test harnesses, benchmarks, scripts, infrastructure code, build output, scratch directories and tool configuration such as `jest.config.js` and `eslint.config.js`. They are code, so Faultline takes them for source and asks you to cover their code paths too. Faultline leaves out `.test.*` and `.spec.*` files without being told, but not the directories and helpers around them.
 
-Options: `--file <path>` and `--function <name>` narrow Faultline to one file or one function, `--report <path>` moves the full checklist, `--replay "<token>"` reproduces a failure Faultline already reported and `--jobs <n>` sets how many workers run at once (by default one per processor core, and no more than the free memory holds at two gigabytes each).
+```yaml
+exclude:
+  - src/test
+  - __mocks__
+  - scripts
+  - jest.config.js
+```
+
+Options: `--file <path>` and `--function <name>` narrow Faultline to one file or one function, `--report <path>` moves the full checklist, `--replay "<token>"` reproduces a failure Faultline already reported and `--jobs <n>` sets how many workers run at once (by default one per processor core, and no more than the free memory holds at two gigabytes each). On a large project, lower `--jobs` if a run makes the machine run short of memory.
 
 ## 4. Run Faultline
 
@@ -27,6 +56,8 @@ npx flt
 ```
 
 Faultline exits 1 below 100% coverage and 0 at 100%.
+
+Run `npx flt` with the rest of your checks, in your pre-commit hook and in CI, so a change that leaves a code path unexercised or brings back a crash is refused. CI needs Node 24 or later on the runner, set up the same way as on your machine.
 
 Faultline keeps each file's result in `node_modules/.cache/faultline/` and does not execute again code that is unchanged since the run that proved it. The report says which files' results came from the cache. `npx flt --no-cache` executes every file, and `npx flt clear` throws the kept results and the compiled files away. A file that has not changed is not compiled again, even with `--no-cache`.
 
@@ -119,10 +150,13 @@ Value factories, scenarios and expectation functions go in a sim file beside the
 
 ## The loop to 100% coverage
 
-Follow this loop from a first run to 100% coverage with no crash left.
+Follow this loop from a first run to 100% coverage with no failure left.
+
+A failure is any of these: an unexpected runtime error at a line of your code (a `TypeError`, `ReferenceError` or `RangeError`, which the report shows as a call that crashed), an error that no code caught, a call that did not return in time, a false expectation and a value factory that throws. A call that throws or rejects is not a failure, and nor is a call of `process.exit`.
 
 1. Run `npx flt` and note the coverage line.
-2. If the report shows a crash, fix it first: read its hint, run its replay command, fix the code, add a unit test for the fix, run the replay command again and check it passes. Fix crashes one at a time and go back to 1 after each.
-3. Take one checklist item and write one value factory for it, or a scenario if no value factory can reach the code path.
-4. Run `npx flt` again. Keep the change only if more code paths were exercised. Otherwise undo it and try another way.
-5. Go back to 2 until Faultline exits 0.
+2. If a source file or a sim file failed to load, fix that first. No code path in it can be exercised until it loads, so each one hides many checklist items.
+3. If the report shows a failure, fix it next: read its hint, run its replay command, fix the code, add a unit test for the fix, run the replay command again and check it passes. Fix failures one at a time and go back to 1 after each.
+4. Take one checklist item and write one value factory for it, or a scenario if no value factory can reach the code path.
+5. Run `npx flt` again. Keep the change only if more code paths were exercised. Otherwise undo it and try another way.
+6. Go back to 2 until Faultline exits 0.

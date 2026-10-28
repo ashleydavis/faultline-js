@@ -14,6 +14,14 @@ Faultline calls every JavaScript and TypeScript function in your project with ch
 
 Faultline is a package your project depends on. `npx flt` runs Faultline.
 
+## Install
+
+Point your AI agent at the [AI quick reference](https://github.com/ashleydavis/faultline-js/blob/main/docs/AI-QUICK-REF.md). It tells the agent how to add Faultline to your project and how to work through the report to 100% coverage with no failure left. Start it with:
+
+```
+Read https://raw.githubusercontent.com/ashleydavis/faultline-js/main/docs/AI-QUICK-REF.md and follow it to add Faultline to this project. Then follow its loop to 100% coverage until `npx flt` exits 0.
+```
+
 ## What you do
 
 - Have Node 24 or later. Faultline runs your code in Node, whatever runtime your project uses in production.
@@ -23,7 +31,7 @@ Faultline is a package your project depends on. `npx flt` runs Faultline.
 
 ## Resources
 
-- [Quick reference](docs/QUICK-REF.md) to add Faultline to a repository and use it.
+- [AI quick reference](docs/AI-QUICK-REF.md) to add Faultline to a repository and use it.
 - [User guide](docs/USER-GUIDE.md) for the full detail.
 - [Contract](docs/CONTRACT.md) for what Faultline promises.
 - [Failures](docs/FAILURES.md) for every failure type Faultline injects.
