@@ -27,7 +27,7 @@
         "test": "jest",
         "coverage": "jest --coverage",
         "smoke": "bash scripts/smoke.sh",
-        "prepare": "tsc"
+        "prepare": "tsc && chmod +x dist/bin/flt.js"
     },
     "dependencies": {
         "@jridgewell/trace-mapping": "0.3.31",
