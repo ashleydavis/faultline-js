@@ -16,7 +16,7 @@ import { createFakeFileSystem } from "../lib/fake-files.test.ts";
 import { exploreShard } from "./explore.ts";
 import type { ICallAnswer, IFailure } from "./judge.ts";
 import type { ICallResult, IOpenRequest, IShardFacts } from "./messages.ts";
-import { isBuildable, isCallable, keptCrashesLine, readFailureSources, refused, replayCall, replayKeptCrashes, runReplay, writeReplay, type IReplayRun, type ReplayResult } from "./replay.ts";
+import { isBuildable, isCallable, keptCrashesLine, readFailureSources, refused, replayCall, replayFromQueue, replayKeptCrashes, replayProgressLine, runReplay, writeReplay, type IKeptReplaying, type IReplayQueue, type IReplayRun, type ReplayResult } from "./replay.ts";
 import { readToken, type IReplayToken } from "./token.ts";
 import type { IWorker } from "./worker.ts";
 
@@ -440,9 +440,100 @@ export function answerOf(token: string): ICallAnswer {
     };
 }
 
+//
+// Replaying with up to `workers` workers made by `createWorker`, keeping every progress line shown
+// in `lines`.
+//
+export function replayingBy(createWorker: () => IWorker, workers: number, lines: string[]): IKeptReplaying {
+    return {
+        workers,
+        createWorker,
+        showProgress: (line: string): void => {
+            lines.push(line);
+        },
+    };
+}
+
+//
+// How many replays are open at once and the most there have been, for the test of replays made at
+// the same time.
+//
+export interface IOpenCount {
+    //
+    // The replays open now.
+    //
+    now: number;
+
+    //
+    // The most open at any one time.
+    //
+    most: number;
+}
+
+//
+// A worker that counts in `open` how many replays are open at once, and lets the other replays have
+// a turn to start before it answers, so replays that run together are seen together.
+//
+export function overlappingWorker(open: IOpenCount): IWorker {
+    const worker = crashingWorker(emptyLog(), undefined);
+    return {
+        ...worker,
+        open: async (request: IOpenRequest): Promise<IShardFacts> => {
+            open.now += 1;
+            open.most = Math.max(open.most, open.now);
+            await new Promise<void>((done) => {
+                setImmediate(done);
+            });
+            const facts = await worker.open(request);
+            open.now -= 1;
+            return facts;
+        },
+    };
+}
+
 describe("replayKeptCrashes", () => {
+    test("kept crashes are replayed by up to the run's workers at once, and answered in the order kept", async () => {
+        const open: IOpenCount = {
+            now: 0,
+            most: 0,
+        };
+        const tokens = ["src/a.ts:next;seed=7;values=b2", "src/a.ts:next;seed=7;values=b0", "src/a.ts:next;seed=7;values=b1", "src/a.ts:next;seed=7;values=b3"];
+        const kept = await replayKeptCrashes(walked, tokens, new Map(), replayingBy(() => overlappingWorker(open), 3, []));
+        assert.equal(open.most, 3);
+        assert.deepEqual(kept.kept, tokens);
+        assert.deepEqual(kept.answers.map((answer) => answer.token), tokens);
+    });
+
+    test("a progress line is shown before the replays and after each one", async () => {
+        const lines: string[] = [];
+        await replayKeptCrashes(walked, ["src/a.ts:next;seed=7;values=b2", "src/a.ts:next;seed=7;values=b0"], new Map(), replayingBy(() => crashingWorker(emptyLog(), undefined), 2, lines));
+        assert.deepEqual(lines, ["  Replaying kept crashes: 0 of 2 done.", "  Replaying kept crashes: 1 of 2 done.", "  Replaying kept crashes: 2 of 2 done."]);
+    });
+
+    test("with every kept crash answered from the cache no worker is made and no progress is shown", async () => {
+        const token = "src/a.ts:next;seed=7;values=b2";
+        const lines: string[] = [];
+        const log = emptyLog();
+        const kept = await replayKeptCrashes(walked, [token], new Map([[token, answerOf(token)]]), replayingBy(() => crashingWorker(log, undefined), 4, lines));
+        assert.deepEqual(kept.read, [token]);
+        assert.equal(log.opens, 0);
+        assert.deepEqual(lines, []);
+    });
+
+    test("a token kept twice is replayed once and answered twice", async () => {
+        const log = emptyLog();
+        const token = "src/a.ts:next;seed=7;values=b2";
+        const kept = await replayKeptCrashes(walked, [token, token], new Map(), replayingBy(() => crashingWorker(log, undefined), 2, []));
+        assert.equal(log.opens, 1);
+        assert.deepEqual(kept.kept, [token, token]);
+    });
+
+    test("no workers is a programmer error", async () => {
+        await assert.rejects(replayKeptCrashes(walked, [], new Map(), replayingBy(() => crashingWorker(emptyLog(), undefined), 0, [])), assert.AssertionError);
+    });
+
     test("kept crashes that still name a call stay, and those that do not are dropped with a sentence", async () => {
-        const kept = await replayKeptCrashes(walked, ["src/a.ts:next;seed=7;values=b2", "src/a.ts:next;seed=7;values=b0", "src/gone.ts:f;seed=1"], new Map(), () => crashingWorker(emptyLog(), undefined));
+        const kept = await replayKeptCrashes(walked, ["src/a.ts:next;seed=7;values=b2", "src/a.ts:next;seed=7;values=b0", "src/gone.ts:f;seed=1"], new Map(), replayingBy(() => crashingWorker(emptyLog(), undefined), 1, []));
         assert.deepEqual(kept.kept, ["src/a.ts:next;seed=7;values=b2", "src/a.ts:next;seed=7;values=b0"]);
         assert.deepEqual(kept.dropped, ["The kept crash src/gone.ts:f;seed=1 was dropped: The token names src/gone.ts, which is not a file Faultline tests in this project."]);
         assert.deepEqual(kept.failures.map((failure) => failure.token), ["src/a.ts:next;seed=7;values=b2"]);
@@ -450,7 +541,7 @@ describe("replayKeptCrashes", () => {
     });
 
     test("the answer of every replayed crash is handed back with the values it was made with", async () => {
-        const kept = await replayKeptCrashes(walked, ["src/a.ts:next;seed=7;values=b2", "src/a.ts:next;seed=7;values=b0"], new Map(), () => crashingWorker(emptyLog(), undefined));
+        const kept = await replayKeptCrashes(walked, ["src/a.ts:next;seed=7;values=b2", "src/a.ts:next;seed=7;values=b0"], new Map(), replayingBy(() => crashingWorker(emptyLog(), undefined), 1, []));
         assert.deepEqual(kept.answers.map((answer) => answer.token), ["src/a.ts:next;seed=7;values=b2", "src/a.ts:next;seed=7;values=b0"]);
         assert.deepEqual(kept.answers.map((answer) => answer.failures.length), [1, 0]);
         assert.deepEqual(kept.answers.map((answer) => answer.arguments), [["b2"], ["b0"]]);
@@ -459,7 +550,7 @@ describe("replayKeptCrashes", () => {
     test("a kept crash with a known answer is answered from it and no worker is made for it", async () => {
         const token = "src/a.ts:next;seed=7;values=b2";
         const log = emptyLog();
-        const kept = await replayKeptCrashes(walked, [token, "src/a.ts:next;seed=7;values=b0"], new Map([[token, answerOf(token)]]), () => crashingWorker(log, undefined));
+        const kept = await replayKeptCrashes(walked, [token, "src/a.ts:next;seed=7;values=b0"], new Map([[token, answerOf(token)]]), replayingBy(() => crashingWorker(log, undefined), 1, []));
         assert.deepEqual(kept.kept, [token, "src/a.ts:next;seed=7;values=b0"]);
         assert.deepEqual(kept.read, [token]);
         assert.deepEqual(kept.failures, answerOf(token).failures);
@@ -469,9 +560,53 @@ describe("replayKeptCrashes", () => {
     });
 });
 
+describe("replayFromQueue", () => {
+    test("one replayer takes every token in turn and answers each", async () => {
+        const queue: IReplayQueue = {
+            tokens: ["src/a.ts:next;seed=7;values=b2", "src/gone.ts:f;seed=1"],
+            next: 0,
+            done: 0,
+            results: new Map(),
+        };
+        const lines: string[] = [];
+        await replayFromQueue(walked, queue, replayingBy(() => crashingWorker(emptyLog(), undefined), 1, lines));
+        assert.equal(queue.next, 2);
+        assert.equal(queue.done, 2);
+        assert.equal(queue.results.get("src/a.ts:next;seed=7;values=b2")?.ok, true);
+        assert.equal(queue.results.get("src/gone.ts:f;seed=1")?.ok, false);
+        assert.deepEqual(lines, ["  Replaying kept crashes: 1 of 2 done.", "  Replaying kept crashes: 2 of 2 done."]);
+    });
+});
+
+describe("replayProgressLine", () => {
+    test("the line says how many of the kept crashes have been replayed", () => {
+        assert.equal(replayProgressLine({
+            tokens: ["a", "b", "c"],
+            next: 2,
+            done: 1,
+            results: new Map(),
+        }), "  Replaying kept crashes: 1 of 3 done.");
+    });
+
+    test("an empty queue or more done than queued is a programmer error", () => {
+        assert.throws(() => replayProgressLine({
+            tokens: [],
+            next: 0,
+            done: 0,
+            results: new Map(),
+        }), assert.AssertionError);
+        assert.throws(() => replayProgressLine({
+            tokens: ["a"],
+            next: 1,
+            done: 2,
+            results: new Map(),
+        }), assert.AssertionError);
+    });
+});
+
 describe("keptCrashesLine", () => {
     test("the line counts the kept crashes replayed and those that still fail", async () => {
-        const kept = await replayKeptCrashes(walked, ["src/a.ts:next;seed=7;values=b2", "src/a.ts:next;seed=7;values=b0"], new Map(), () => crashingWorker(emptyLog(), undefined));
+        const kept = await replayKeptCrashes(walked, ["src/a.ts:next;seed=7;values=b2", "src/a.ts:next;seed=7;values=b0"], new Map(), replayingBy(() => crashingWorker(emptyLog(), undefined), 1, []));
         assert.equal(keptCrashesLine(kept), "Replayed 2 kept crashes, 1 still fails.");
         assert.equal(keptCrashesLine({
             kept: ["t"],

@@ -196,7 +196,11 @@ export async function runProject(environment: IRunEnvironment, options: IOptions
         return 1;
     }
     const plan = await planCache(environment, shards, isCacheUsed(options));
-    const replayed = await replayKeptCrashes(walked, kept.value.filter((token) => isTokenSelected(options, token)), plan.answers, () => environment.createWorker());
+    const replayed = await replayKeptCrashes(walked, kept.value.filter((token) => isTokenSelected(options, token)), plan.answers, {
+        workers,
+        createWorker: (): IWorker => environment.createWorker(),
+        showProgress: (line: string): void => environment.output.showProgress(line),
+    });
     const progress: IRunProgress = {
         calls: 0,
         startedMs,

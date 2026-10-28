@@ -318,12 +318,76 @@ export interface IKeptCrashes {
 }
 
 //
-// Replays every kept crash, each in a worker of its own, before the run makes any call of its own.
-// A token with an answer in `known`, which holds the answers of shards whose key has not changed
-// since, is answered from it without a replay, because the replay would give the same answer. A
-// token that no longer names a call of the project is dropped.
+// How the kept crashes are replayed: by up to `workers` workers at once, each made with
+// `createWorker`, with a progress line after each replay so a run never sits silent while they go.
 //
-export async function replayKeptCrashes(walked: Walked, tokens: string[], known: Map<string, ICallAnswer>, createWorker: () => IWorker): Promise<IKeptCrashes> {
+export interface IKeptReplaying {
+    //
+    // The most replays made at once, the run's own number of workers, since each replay opens its
+    // file in a worker of its own and the replays do not depend on one another.
+    //
+    workers: number;
+
+    //
+    // Makes the worker for one replay.
+    //
+    createWorker(): IWorker;
+
+    //
+    // Shows a progress line in place of the last.
+    //
+    showProgress(line: string): void;
+}
+
+//
+// The replays still to make and the answers made so far, which every replaying worker shares.
+//
+export interface IReplayQueue {
+    //
+    // The tokens to replay, in the order kept.
+    //
+    tokens: string[];
+
+    //
+    // The position of the next token to hand out.
+    //
+    next: number;
+
+    //
+    // How many replays have finished.
+    //
+    done: number;
+
+    //
+    // The result of each replay that has finished, by token.
+    //
+    results: Map<string, ReplayResult>;
+}
+
+//
+// Replays every kept crash before the run makes any call of its own, up to `replaying.workers` at
+// once. A token with an answer in `known`, which holds the answers of shards whose key has not
+// changed since, is answered from it without a replay, because the replay would give the same
+// answer. A token that no longer names a call of the project is dropped.
+//
+export async function replayKeptCrashes(walked: Walked, tokens: string[], known: Map<string, ICallAnswer>, replaying: IKeptReplaying): Promise<IKeptCrashes> {
+    assert(Number.isInteger(replaying.workers));
+    assert(replaying.workers > 0);
+    const queue: IReplayQueue = {
+        tokens: [...new Set(tokens.filter((token) => !known.has(token)))],
+        next: 0,
+        done: 0,
+        results: new Map(),
+    };
+    if (queue.tokens.length > 0) {
+        replaying.showProgress(replayProgressLine(queue));
+    }
+    const replayers: Promise<void>[] = [];
+    for (let count = 0; count < Math.min(replaying.workers, queue.tokens.length); count += 1) {
+        replayers.push(replayFromQueue(walked, queue, replaying));
+    }
+    await Promise.all(replayers);
+    assert.equal(queue.results.size, queue.tokens.length);
     const found: IKeptCrashes = {
         kept: [],
         dropped: [],
@@ -341,7 +405,8 @@ export async function replayKeptCrashes(walked: Walked, tokens: string[], known:
             found.answers.push(answer);
             continue;
         }
-        const result = await replayCall(walked, token, createWorker);
+        const result = queue.results.get(token);
+        assert(result !== undefined);
         if (!result.ok) {
             found.dropped.push(`The kept crash ${token} was dropped: ${result.error}`);
             continue;
@@ -358,6 +423,35 @@ export async function replayKeptCrashes(walked: Walked, tokens: string[], known:
     assert.equal(found.answers.length, found.kept.length);
     assert(found.dropped.every((line) => line.endsWith(".")));
     return found;
+}
+
+//
+// Takes the next token from `queue` and replays it, until the queue is empty, showing progress after
+// each. Several of these share one queue, so up to that many replays run at once.
+//
+export async function replayFromQueue(walked: Walked, queue: IReplayQueue, replaying: IKeptReplaying): Promise<void> {
+    //
+    // Each turn takes one token from the queue, so the loop ends.
+    //
+    while (queue.next < queue.tokens.length) {
+        const token = queue.tokens[queue.next];
+        assert(token !== undefined);
+        queue.next += 1;
+        queue.results.set(token, await replayCall(walked, token, () => replaying.createWorker()));
+        queue.done += 1;
+        replaying.showProgress(replayProgressLine(queue));
+    }
+    assert(queue.done <= queue.tokens.length);
+}
+
+//
+// The progress line while kept crashes are replayed, such as "  Replaying kept crashes: 3 of 16
+// done.", so a run that spends minutes on them says what it is doing.
+//
+export function replayProgressLine(queue: IReplayQueue): string {
+    assert(queue.done <= queue.tokens.length);
+    assert(queue.tokens.length > 0);
+    return `  Replaying kept crashes: ${queue.done} of ${queue.tokens.length} done.`;
 }
 
 //

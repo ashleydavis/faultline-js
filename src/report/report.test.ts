@@ -25,6 +25,7 @@ import {
     workersLine,
     kindWords,
     problemLines,
+    humanCount,
     progressLine,
     readCountLines,
     replayLine,
@@ -362,6 +363,31 @@ describe("cachedLines", () => {
         assert.deepEqual(cachedLines(new Set()), []);
         assert.deepEqual(cachedLines(new Set(["src/a.ts", "src/b.ts", "global.sim.ts"])), ["  Cached 2 source files, 1 sim file."]);
         assert.deepEqual(cachedLines(new Set(["src/a.ts"])), ["  Cached 1 source file, 0 sim files."]);
+    });
+});
+
+describe("humanCount", () => {
+    test("a count under a thousand is written in full and a larger one the short way", () => {
+        assert.equal(humanCount(0), "0");
+        assert.equal(humanCount(950), "950");
+        assert.equal(humanCount(1000), "1K");
+        assert.equal(humanCount(12345), "12.3K");
+        assert.equal(humanCount(999950), "1M");
+        assert.equal(humanCount(1234567), "1.2M");
+    });
+
+    test("a count that is not a whole number from 0 up is a programmer error", () => {
+        assert.throws(() => humanCount(-1), assert.AssertionError);
+        assert.throws(() => humanCount(1.5), assert.AssertionError);
+    });
+
+    test("the progress line writes a large count the short way", () => {
+        assert.equal(progressLine({
+            calls: 123456,
+            elapsedMs: 61000,
+            file: "src/a.ts",
+            name: "f",
+        }), "  Exercised 123.5K calls in 1m 1s, now in src/a.ts f.");
     });
 });
 

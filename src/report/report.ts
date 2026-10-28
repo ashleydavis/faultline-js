@@ -336,8 +336,28 @@ export function reportPathLines(reportPath: string): string[] {
 export function progressLine(at: { calls: number; elapsedMs: number; file: string; name: string }): string {
     assert(at.calls > 0);
     assert(at.elapsedMs >= 0);
-    return `  Exercised ${at.calls} ${plural(at.calls, "call", "calls")} in ${elapsed(at.elapsedMs)}, now in ${at.file} ${at.name}.`;
+    return `  Exercised ${humanCount(at.calls)} ${plural(at.calls, "call", "calls")} in ${elapsed(at.elapsedMs)}, now in ${at.file} ${at.name}.`;
 }
+
+//
+// A count written the short way a person reads it at a glance, such as 950, 12.3K or 1.2M, for a
+// progress line whose count changes too fast to read digit by digit.
+//
+export function humanCount(count: number): string {
+    assert(Number.isInteger(count));
+    assert(count >= 0);
+    return compactCount.format(count);
+}
+
+//
+// Writes counts in English short form with at most one digit after the point, so a count of
+// thousands or millions keeps its line short.
+//
+const compactCount = new Intl.NumberFormat("en", {
+    notation: "compact",
+    compactDisplay: "short",
+    maximumFractionDigits: 1,
+});
 
 //
 // What a run exits with: 0 when every code path was exercised, no call failed and every file
