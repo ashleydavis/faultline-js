@@ -422,9 +422,42 @@ export function createServer(options?: unknown, handler?: unknown): Server {
 
 export { ClientRequest, RunResponse, Server };
 
+//
+// What `import http from "node:http"` gets, written out by name. Left to be inferred, its type
+// takes the real module's types from `undici-types`, and in a project whose packages Bun keeps in
+// `node_modules/.bun/` the declaration file can only name them by a path into that directory, so
+// the build Faultline runs when it is installed failed with TS2742.
+//
+export interface ISimulatedHttp extends Omit<typeof realHttp, "request" | "get" | "createServer" | "ClientRequest" | "Server"> {
+    //
+    // A request made on the run's network.
+    //
+    request: typeof request;
+
+    //
+    // A request with no body, made on the run's network.
+    //
+    get: typeof get;
+
+    //
+    // A server that listens on the run's network.
+    //
+    createServer: typeof createServer;
+
+    //
+    // The request a call on the run's network gives back.
+    //
+    ClientRequest: typeof ClientRequest;
+
+    //
+    // The server a call of `createServer` gives back.
+    //
+    Server: typeof Server;
+}
+
 // What `import http from "node:http"` gets: the real module's constants, agents and the request
 // and response a server is handed, with every call that reaches the network replaced.
-export default {
+const simulatedHttp: ISimulatedHttp = {
     ...realHttp,
     request,
     get,
@@ -432,3 +465,5 @@ export default {
     ClientRequest,
     Server,
 };
+
+export default simulatedHttp;

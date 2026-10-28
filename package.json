@@ -1,7 +1,7 @@
 {
     "name": "faultline",
     "version": "0.1.0",
-    "description": "Runs every code path in every JavaScript and TypeScript function in your project, and reports the ones no call reached.",
+    "description": "Fault testing for JavaScript and TypeScript. Faultline runs every code path in your project, both happy paths and error handling paths. It's job is to get to 100% code coverage and if possible make your code crash (so you can then adjust your code to make it uncrashable).",
     "type": "module",
     "bin": {
         "flt": "./dist/bin/flt.js"
