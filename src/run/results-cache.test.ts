@@ -14,7 +14,7 @@ import { createFakeFileSystem, type IFakeFileSystem } from "../lib/fake-files.te
 import { createLoader } from "../load/hooks.ts";
 import type { IShardResult } from "./explore.ts";
 import { pathKey } from "./measure.ts";
-import { augmentingInProject, clearResults, contributorsOf, entryPath, formatVersion, importsOf, isEntryLaidOut, isObject, isStoredEntry, isUsable, keyOf, keyOfShard, markContributors, projectKeyInputs, readEntry, readEntryFile, resultsDirectoryOf, saltOf, unitsToRun, writeEntry, writeEntryFile, type ICacheEntry, type IKeyInputs, type IUnit } from "./results-cache.ts";
+import { augmentingInProject, createKeyMemo, clearResults, contributorsOf, entryPath, formatVersion, importsOf, readKeyFile, workOutKeyFile, isEntryLaidOut, isObject, isStoredEntry, isUsable, keyOf, keyOfShard, markContributors, projectKeyInputs, readEntry, readEntryFile, resultsDirectoryOf, saltOf, unitsToRun, writeEntry, writeEntryFile, type ICacheEntry, type IKeyInputs, type IUnit } from "./results-cache.ts";
 
 //
 // The root of every project in memory these tests build. Any absolute path does, because the file
@@ -111,6 +111,7 @@ export function inputsOf(files: IFakeFileSystem, salt: string): IKeyInputs {
             return [];
         },
         salt,
+        memo: createKeyMemo(),
     };
 }
 
@@ -391,27 +392,42 @@ describe("keyOf", () => {
             "src/data.json": "{ \"v\": 1 }\n",
             "src/other.ts": "export const other = 1;\n",
         });
-        const inputs = inputsOf(files, "salt");
-        const first = await keyOf(inputs, ["src/a.ts"]);
+                const first = await keyOf(inputsOf(files, "salt"), ["src/a.ts"]);
         assert.match(first, /^[0-9a-f]{64}$/);
-        assert.equal(await keyOf(inputs, ["src/a.ts", "src/a.ts"]), first);
+        assert.equal(await keyOf(inputsOf(files, "salt"), ["src/a.ts", "src/a.ts"]), first);
         changeFile(files, "src/other.ts", "export const other = 2;\n");
-        assert.equal(await keyOf(inputs, ["src/a.ts"]), first);
+        assert.equal(await keyOf(inputsOf(files, "salt"), ["src/a.ts"]), first);
         changeFile(files, "src/data.json", "{ \"v\": 2 }\n");
-        const changed = await keyOf(inputs, ["src/a.ts"]);
+        const changed = await keyOf(inputsOf(files, "salt"), ["src/a.ts"]);
         assert.notEqual(changed, first);
         assert.notEqual(await keyOf(inputsOf(files, "other salt"), ["src/a.ts"]), changed);
-        assert.notEqual(await keyOf(inputs, ["src/a.ts", "src/other.ts"]), changed);
+        assert.notEqual(await keyOf(inputsOf(files, "salt"), ["src/a.ts", "src/other.ts"]), changed);
     });
 
     test("a file that is missing changes the key when it comes back", async () => {
         const files = projectOf({
             "src/a.ts": "import { gone } from \"./gone\";\n",
         });
-        const inputs = inputsOf(files, "salt");
-        const missing = await keyOf(inputs, ["src/a.ts"]);
+                const missing = await keyOf(inputsOf(files, "salt"), ["src/a.ts"]);
         changeFile(files, "src/gone.ts", "export const gone = 1;\n");
-        assert.notEqual(await keyOf(inputs, ["src/a.ts"]), missing);
+        assert.notEqual(await keyOf(inputsOf(files, "salt"), ["src/a.ts"]), missing);
+    });
+
+    test("one run's inputs read, scan and resolve each file once, however many keys take it", async () => {
+        const files = projectOf({
+            "src/a.ts": "import { b } from \"./b\";\nexport const a = b;\n",
+            "src/b.ts": "export const b = 1;\n",
+        });
+        const inputs = inputsOf(files, "salt");
+        const first = await keyOf(inputs, ["src/a.ts"]);
+        assert.equal(inputs.memo.files.size, 2);
+        assert.deepEqual(await inputs.memo.files.get("src/a.ts"), {
+            text: "import { b } from \"./b\";\nexport const a = b;\n",
+            imports: ["src/b.ts"],
+        });
+        changeFile(files, "src/b.ts", "export const b = 2;\n");
+        assert.equal(await keyOf(inputs, ["src/a.ts"]), first);
+        assert.notEqual(await keyOf(inputsOf(files, "salt"), ["src/a.ts"]), first);
     });
 
     test("a file that is there and cannot be read rejects with the error", async () => {
@@ -424,6 +440,43 @@ describe("keyOf", () => {
     });
 });
 
+describe("createKeyMemo", () => {
+    test("a run starts with nothing worked out", () => {
+        const memo = createKeyMemo();
+        assert.equal(memo.files.size, 0);
+        assert.equal(memo.owners.size, 0);
+        assert.equal(memo.augmenting.size, 0);
+    });
+});
+
+describe("readKeyFile and workOutKeyFile", () => {
+    test("a script's text and the project files it imports, a missing file and a file that imports nothing", async () => {
+        const files = projectOf({
+            "src/a.ts": "import { b } from \"./b\";\nimport pkg from \"pkg\";\n",
+            "src/data.json": "{ \"import\": \"./b\" }\n",
+        });
+        const inputs = inputsOf(files, "salt");
+        assert.deepEqual(await workOutKeyFile(inputs, "src/a.ts"), {
+            text: "import { b } from \"./b\";\nimport pkg from \"pkg\";\n",
+            imports: ["src/b.ts"],
+        });
+        assert.deepEqual(await workOutKeyFile(inputs, "src/gone.ts"), {
+            text: undefined,
+            imports: [],
+        });
+        assert.deepEqual((await workOutKeyFile(inputs, "src/data.json")).imports, []);
+    });
+
+    test("the same file asked for twice in one run is worked out once", async () => {
+        const inputs = inputsOf(projectOf({
+            "src/a.ts": "export const a = 1;\n",
+        }), "salt");
+        const first = readKeyFile(inputs, "src/a.ts");
+        assert.equal(readKeyFile(inputs, "src/a.ts"), first);
+        assert.throws(() => readKeyFile(inputs, path.join(root, "src/a.ts")), assert.AssertionError);
+    });
+});
+
 describe("keyOfShard", () => {
     test("a shard's key covers its file and its sim files", async () => {
         const files = projectOf({
@@ -431,15 +484,14 @@ describe("keyOfShard", () => {
             "src/a.sim.ts": "export function make(): number { return 1; }\n",
             "global.sim.ts": "export function other(): number { return 2; }\n",
         });
-        const inputs = inputsOf(files, "salt");
-        const shard = {
+                const shard = {
             file: "src/a.ts",
             sims: ["src/a.sim.ts", "global.sim.ts"],
         };
-        const first = await keyOfShard(inputs, shard);
-        assert.equal(first, await keyOf(inputs, ["src/a.ts", "src/a.sim.ts", "global.sim.ts"]));
+        const first = await keyOfShard(inputsOf(files, "salt"), shard);
+        assert.equal(first, await keyOf(inputsOf(files, "salt"), ["src/a.ts", "src/a.sim.ts", "global.sim.ts"]));
         changeFile(files, "global.sim.ts", "export function other(): number { return 3; }\n");
-        assert.notEqual(await keyOfShard(inputs, shard), first);
+        assert.notEqual(await keyOfShard(inputsOf(files, "salt"), shard), first);
     });
 
     //
@@ -455,20 +507,20 @@ describe("keyOfShard", () => {
             "src/types/globals.d.ts": "declare global { var first: number; }\nexport {};\n",
             "src/plain.d.ts": "export type Plain = number;\n",
         });
-        const inputs = projectKeyInputs(files, {
+        const settings = {
             projectRoot: root,
             toolModules: "/faultline/src",
-        }, "salt");
+        };
         const shard = {
             file: "src/a.ts",
             sims: [],
         };
-        const first = await keyOfShard(inputs, shard);
-        assert.equal(await keyOfShard(inputs, shard), first);
+        const first = await keyOfShard(projectKeyInputs(files, settings, "salt"), shard);
+        assert.equal(await keyOfShard(projectKeyInputs(files, settings, "salt"), shard), first);
         changeFile(files, "src/plain.d.ts", "export type Plain = string;\n");
-        assert.equal(await keyOfShard(inputs, shard), first);
+        assert.equal(await keyOfShard(projectKeyInputs(files, settings, "salt"), shard), first);
         changeFile(files, "src/types/globals.d.ts", "declare global { var second: string; }\nexport {};\n");
-        assert.notEqual(await keyOfShard(inputs, shard), first);
+        assert.notEqual(await keyOfShard(projectKeyInputs(files, settings, "salt"), shard), first);
     });
 });
 
@@ -488,14 +540,18 @@ describe("augmentingInProject", () => {
             "src/types/globals.d.ts": "declare global { var first: number; }\nexport {};\n",
             "src/express.d.ts": "declare module \"express\" { interface Request { user: string; } }\n",
         });
-        const found = await augmentingInProject(createLoader(settings, owned), "src/a.ts");
+        const memo = createKeyMemo();
+        const found = await augmentingInProject(createLoader(settings, owned), "src/a.ts", memo);
         assert.deepEqual([...found].sort(), ["src/express.d.ts", "src/types/globals.d.ts"]);
+        assert.equal(memo.owners.get(path.join(root, "src")) !== undefined, true);
+        assert.deepEqual(await augmentingInProject(createLoader(settings, owned), "src/a.ts", memo), found);
+        assert.equal(memo.augmenting.size, 1);
         const unowned = projectOf({
             "src/a.ts": "export const a = 1;\n",
             "src/types/globals.d.ts": "declare global { var first: number; }\nexport {};\n",
         });
-        assert.deepEqual(await augmentingInProject(createLoader(settings, unowned), "src/a.ts"), []);
-        await assert.rejects(augmentingInProject(createLoader(settings, owned), path.join(root, "src/a.ts")), assert.AssertionError);
+        assert.deepEqual(await augmentingInProject(createLoader(settings, unowned), "src/a.ts", createKeyMemo()), []);
+        await assert.rejects(augmentingInProject(createLoader(settings, owned), path.join(root, "src/a.ts"), createKeyMemo()), assert.AssertionError);
     });
 });
 
@@ -516,7 +572,10 @@ describe("projectKeyInputs", () => {
         assert.equal(await inputs.resolve("node:fs", path.join(root, "src/a.ts")), undefined);
         const first = await keyOf(inputs, ["src/a.ts"]);
         changeFile(files, "lib/b.ts", "export const b = 2;\n");
-        assert.notEqual(await keyOf(inputs, ["src/a.ts"]), first);
+        assert.notEqual(await keyOf(projectKeyInputs(files, {
+            projectRoot: root,
+            toolModules: "/faultline/src",
+        }, "salt"), ["src/a.ts"]), first);
     });
 });
 

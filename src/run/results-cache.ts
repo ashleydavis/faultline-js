@@ -355,6 +355,104 @@ export interface IKeyInputs {
     // every result away.
     //
     salt: string;
+
+    //
+    // What this run has already worked out about each file, so a file every shard imports is read,
+    // scanned and resolved once per run rather than once per shard. A run's files do not change
+    // while it works out its keys, so the inputs are built anew for every run.
+    //
+    memo: IKeyMemo;
+}
+
+//
+// What one run has worked out for its keys, each kept as the promise of it so shards worked out at
+// the same time share the work.
+//
+export interface IKeyMemo {
+    //
+    // Each file's text and the project files it imports, by path from the project root.
+    //
+    files: Map<string, Promise<IKeyFile>>;
+
+    //
+    // The `tsconfig.json` that owns each directory, by absolute path.
+    //
+    owners: Map<string, Promise<string | undefined>>;
+
+    //
+    // The files that declare something for every file under each `tsconfig.json`, by its path.
+    //
+    augmenting: Map<string, Promise<string[]>>;
+}
+
+//
+// What a key takes from one file.
+//
+export interface IKeyFile {
+    //
+    // The file's text, or undefined when it is not there.
+    //
+    text: string | undefined;
+
+    //
+    // The project files it imports, by path from the project root, in the order written.
+    //
+    imports: string[];
+}
+
+//
+// A memo with nothing worked out yet, for the start of a run.
+//
+export function createKeyMemo(): IKeyMemo {
+    return {
+        files: new Map(),
+        owners: new Map(),
+        augmenting: new Map(),
+    };
+}
+
+//
+// The text of `file` and the project files it imports, worked out once per run. Only a script
+// names the files it imports. Any other file a project file imports (a JSON file, say) is hashed
+// for what it holds and imports nothing.
+//
+export function readKeyFile(inputs: IKeyInputs, file: string): Promise<IKeyFile> {
+    assert(!path.isAbsolute(file));
+    const known = inputs.memo.files.get(file);
+    if (known) {
+        return known;
+    }
+    const reading = workOutKeyFile(inputs, file);
+    inputs.memo.files.set(file, reading);
+    return reading;
+}
+
+//
+// Reads `file` and resolves what it imports, for `readKeyFile` to keep.
+//
+export async function workOutKeyFile(inputs: IKeyInputs, file: string): Promise<IKeyFile> {
+    const full = path.join(inputs.projectRoot, file);
+    if (!await inputs.files.isFile(full)) {
+        return {
+            text: undefined,
+            imports: [],
+        };
+    }
+    const text = await inputs.files.readText(full);
+    const imports: string[] = [];
+    if ([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"].includes(path.extname(file))) {
+        for (const specifier of importsOf(text)) {
+            const resolved = await inputs.resolve(specifier, full);
+            if (resolved !== undefined) {
+                imports.push(path.relative(inputs.projectRoot, resolved).split(path.sep).join("/"));
+            }
+        }
+    }
+    assert(imports.every((name) => !path.isAbsolute(name)));
+    return {
+        text,
+        imports,
+    };
 }
 
 //
@@ -381,32 +479,19 @@ export async function keyOf(inputs: IKeyInputs, roots: string[]): Promise<string
         assert(next < keyFilesMost, "A key followed more project files than any project holds, which is a defect in Faultline.");
         const file = queue[next];
         assert(file !== undefined);
-        const full = path.join(inputs.projectRoot, file);
         hash.update(file);
         hash.update("\0");
-        if (!await inputs.files.isFile(full)) {
+        const keyFile = await readKeyFile(inputs, file);
+        if (keyFile.text === undefined) {
             hash.update("missing\0");
             continue;
         }
-        const text = await inputs.files.readText(full);
-        hash.update(text);
+        hash.update(keyFile.text);
         hash.update("\0");
-        //
-        // Only a script names the files it imports. Any other file a project file imports (a JSON
-        // file, say) is hashed for what it holds and imports nothing.
-        //
-        if (![".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"].includes(path.extname(file))) {
-            continue;
-        }
-        for (const specifier of importsOf(text)) {
-            const resolved = await inputs.resolve(specifier, full);
-            if (resolved === undefined) {
-                continue;
-            }
-            const relative = path.relative(inputs.projectRoot, resolved).split(path.sep).join("/");
-            if (!seen.has(relative)) {
-                seen.add(relative);
-                queue.push(relative);
+        for (const imported of keyFile.imports) {
+            if (!seen.has(imported)) {
+                seen.add(imported);
+                queue.push(imported);
             }
         }
     }
@@ -436,29 +521,43 @@ export function projectKeyInputs(files: IFileSystem, settings: ILoadSettings, sa
     assert(path.isAbsolute(settings.projectRoot));
     assert(salt.length > 0);
     const loader = createLoader(settings, files);
+    const memo = createKeyMemo();
     return {
         projectRoot: settings.projectRoot,
         files,
         resolve: (specifier: string, importer: string) => resolveInProject(loader, specifier, importer),
-        augmenting: (file: string) => augmentingInProject(loader, file),
+        augmenting: (file: string) => augmentingInProject(loader, file, memo),
         salt,
+        memo,
     };
 }
 
 //
 // The files under the `tsconfig.json` that owns `file` which declare something for every file,
 // relative to the project root, found the way a shard's program finds them. A file no
-// `tsconfig.json` owns has none, because its program is built over the shard's files alone.
+// `tsconfig.json` owns has none, because its program is built over the shard's files alone. The
+// owner of each directory and the files of each `tsconfig.json` are worked out once per run, in
+// `memo`, because every shard under one `tsconfig.json` has the same ones.
 //
-export async function augmentingInProject(loader: ILoader, file: string): Promise<string[]> {
+export async function augmentingInProject(loader: ILoader, file: string, memo: IKeyMemo): Promise<string[]> {
     const root = loader.settings.projectRoot;
     assert(!path.isAbsolute(file));
-    const config = await ownerConfig(loader.reading.fileSystem, root, path.join(root, file));
+    const directory = path.dirname(path.join(root, file));
+    let owner = memo.owners.get(directory);
+    if (!owner) {
+        owner = ownerConfig(loader.reading.fileSystem, root, path.join(root, file));
+        memo.owners.set(directory, owner);
+    }
+    const config = await owner;
     if (!config) {
         return [];
     }
-    const found = await untilKnown(loader.reading, () => augmentingFiles(loader.reading.known, config));
-    const relative = found.map((full) => path.relative(root, full).split(path.sep).join("/"));
+    let found = memo.augmenting.get(config);
+    if (!found) {
+        found = untilKnown(loader.reading, () => augmentingFiles(loader.reading.known, config)).then((files) => files.map((full) => path.relative(root, full).split(path.sep).join("/")));
+        memo.augmenting.set(config, found);
+    }
+    const relative = await found;
     assert(relative.every((name) => !name.startsWith("..")));
     return relative;
 }
