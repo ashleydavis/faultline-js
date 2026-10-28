@@ -1,5 +1,5 @@
 //
-// Splits a run into shards, one per source file and one per sim file, hands them to up to `jobs`
+// Splits a run into shards, one per source file and one per sim file, hands them to up to `workers`
 // workers and reads the results back in shard order, so the result does not depend on how many
 // workers there were or which finished first.
 //
@@ -52,7 +52,7 @@ export interface IRunOptions {
     //
     // The most workers that run at once.
     //
-    jobs: number;
+    workers: number;
 }
 
 //
@@ -76,36 +76,30 @@ export interface IRunResult {
 }
 
 //
-// The memory a run sets aside for each worker when it picks how many to start, in bytes. A
-// worker's child holds the compiler's program for its shard and copies of the project's modules,
-// and on 2026-10-21 the children of a run over a project of about 135 files held 0.8 to 1.4 GB
-// each. Two gigabytes leaves room for that growth, so the workers a run starts by default fit in
-// the memory the machine had free and a run never makes the machine swap until it stops answering.
+// The cores a default run leaves free, so the machine stays usable for whoever is at it while the
+// workers take the rest.
 //
-export const workerMemoryBytes = 2 * 1024 * 1024 * 1024;
+export const coresLeftFree = 2;
 
 //
 // How many workers a run starts when it is not told: one per core the machine offers this process,
-// and no more than the free memory holds at `workerMemoryBytes` each, but always at least one.
+// less the cores it leaves free, but always at least one.
 //
-export function defaultJobs(): number {
-    return countJobs(os.availableParallelism(), os.freemem());
+export function defaultWorkers(): number {
+    return countWorkers(os.availableParallelism());
 }
 
 //
-// The number of workers `cores` cores and `freeBytes` bytes of free memory hold: the smaller of the
-// cores and the workers that fit in the memory, and at least one, because a run with no worker
-// tests nothing.
+// The number of workers a machine of `cores` cores runs: the cores less `coresLeftFree`, and at
+// least one, because a run with no worker tests nothing.
 //
-export function countJobs(cores: number, freeBytes: number): number {
+export function countWorkers(cores: number): number {
     assert(Number.isInteger(cores));
     assert(cores > 0);
-    assert(freeBytes >= 0);
-    const fitting = Math.floor(freeBytes / workerMemoryBytes);
-    const jobs = Math.max(1, Math.min(cores, fitting));
-    assert(jobs <= cores);
-    assert(jobs >= 1);
-    return jobs;
+    const workers = Math.max(1, cores - coresLeftFree);
+    assert(workers <= cores);
+    assert(workers >= 1);
+    return workers;
 }
 
 //
@@ -155,12 +149,12 @@ export interface IShardQueue {
 }
 
 //
-// Runs the shards of `options` with up to `jobs` workers, each made by `createWorker` and stopped
+// Runs the shards of `options` with up to `options.workers` workers, each made by `createWorker` and stopped
 // when there is no shard left for it.
 //
 export async function runShards(options: IRunOptions, createWorker: () => IWorker): Promise<IRunResult> {
-    assert(Number.isInteger(options.jobs));
-    assert(options.jobs > 0);
+    assert(Number.isInteger(options.workers));
+    assert(options.workers > 0);
     const shards = options.shards;
     const queue: IShardQueue = {
         shards,
@@ -169,7 +163,7 @@ export async function runShards(options: IRunOptions, createWorker: () => IWorke
         seed: options.seed,
     };
     const workers: Promise<void>[] = [];
-    for (let count = 0; count < Math.min(options.jobs, shards.length); count += 1) {
+    for (let count = 0; count < Math.min(options.workers, shards.length); count += 1) {
         workers.push(workShards(queue, createWorker()));
     }
     await Promise.all(workers);

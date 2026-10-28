@@ -51,6 +51,16 @@ export function headerLine(projectRoot: string): string {
 }
 
 //
+// The line a run prints as it starts, saying how many workers it runs at most, so a slow run shows
+// at once whether it was given too few.
+//
+export function workersLine(workers: number): string {
+    assert(Number.isInteger(workers));
+    assert(workers > 0);
+    return workers === 1 ? "  Running up to 1 worker at once." : `  Running up to ${workers} workers at once.`;
+}
+
+//
 // The line that says how many source files and functions the run read. Every file's top level
 // counts as a function, because importing the file runs it.
 //

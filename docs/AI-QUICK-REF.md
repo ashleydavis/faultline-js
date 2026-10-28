@@ -47,7 +47,7 @@ exclude:
   - jest.config.js
 ```
 
-Options: `--file <path>` and `--function <name>` narrow Faultline to one file or one function, `--report <path>` moves the full checklist, `--replay "<token>"` reproduces a failure Faultline already reported and `--jobs <n>` sets how many workers run at once (by default one per processor core, and no more than the free memory holds at two gigabytes each). On a large project, lower `--jobs` if a run makes the machine run short of memory.
+Options: `--file <path>` and `--function <name>` narrow Faultline to one file or one function, `--report <path>` moves the full checklist, `--replay "<token>"` reproduces a failure Faultline already reported and `--workers <n>` sets how many workers run at once (by default one per processor core less two, and at least one). On a large project, lower `--workers` if a run makes the machine run short of memory.
 
 ## 4. Run Faultline
 

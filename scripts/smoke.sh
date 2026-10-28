@@ -229,6 +229,7 @@ normalise() {
         -e "s|$REPO_DIR/||g" \
         -e '/^ +Took [0-9hms ]+\.$/d' \
         -e 's/, [0-9]+ calls//' \
+        -e 's/^  Running up to [0-9]+ workers? at once\.$/  Running up to <n> workers at once./' \
         -e 's/seed=[0-9]+/seed=<seed>/g' \
         -e 's|[A-Za-z0-9_./+-]*node_modules/\.cache/faultline/([A-Za-z0-9_.-]+\.txt)|<cache>/\1|g'
 }
@@ -258,7 +259,19 @@ run_flt() {
     local directory="$1"
     local node_options="$2"
     shift 2
-    ( cd "$directory" && NO_COLOR=1 NODE_OPTIONS="$node_options" npx --no-install flt "$@" )
+    # An example that needs environment variables carries them in environment.txt beside it, one
+    # NAME=value per line, so every run of it gets them, its replays included, which take no other
+    # option. The example of a file that never finishes opening uses it to wait seconds, not the
+    # full limit.
+    local environment=()
+    if [ -f "$directory/environment.txt" ]; then
+        while IFS= read -r LINE; do
+            if [ -n "$LINE" ]; then
+                environment+=("$LINE")
+            fi
+        done < "$directory/environment.txt"
+    fi
+    ( cd "$directory" && env NO_COLOR=1 NODE_OPTIONS="$node_options" "${environment[@]+"${environment[@]}"}" npx --no-install flt "$@" )
 }
 
 # Runs one example and writes its whole output to its own log. Its verdict, pass or fail, is
@@ -319,16 +332,16 @@ run_one() {
     # the cache.
     rm -rf "$directory/node_modules/.cache/faultline"
 
-    # The run uses four workers, so the --jobs 1 run below is the comparison of one worker with
-    # four. An example that names its own --jobs, or replays a token, which takes no other option,
+    # The run uses four workers, so the --workers 1 run below is the comparison of one worker with
+    # four. An example that names its own --workers, or replays a token, which takes no other option,
     # is run with its own options alone.
-    local jobs_option=(--jobs 4)
-    if printf '%s\n' "${arguments[@]+"${arguments[@]}"}" | grep -qx -e '--jobs' -e '--replay'; then
-        jobs_option=()
+    local workers_option=(--workers 4)
+    if printf '%s\n' "${arguments[@]+"${arguments[@]}"}" | grep -qx -e '--workers' -e '--replay'; then
+        workers_option=()
     fi
 
     local code
-    run_flt "$directory" "$node_options" "${arguments[@]+"${arguments[@]}"}" "${jobs_option[@]+"${jobs_option[@]}"}" > "$output.raw" 2>&1
+    run_flt "$directory" "$node_options" "${arguments[@]+"${arguments[@]}"}" "${workers_option[@]+"${workers_option[@]}"}" > "$output.raw" 2>&1
     code="$?"
     normalise < "$output.raw" > "$output"
 
@@ -427,7 +440,7 @@ run_one() {
     # their own. A run narrowed with --file or --function never reads the cache, so it has no cached
     # line.
     rm -f "$directory/node_modules/.cache/faultline/crashes.txt"
-    run_flt "$directory" "$node_options" "${arguments[@]+"${arguments[@]}"}" "${jobs_option[@]+"${jobs_option[@]}"}" > "$output.cached.raw" 2>&1
+    run_flt "$directory" "$node_options" "${arguments[@]+"${arguments[@]}"}" "${workers_option[@]+"${workers_option[@]}"}" > "$output.cached.raw" 2>&1
     grep -v '^  Cached ' "$output" > "$output.fill"
     normalise < "$output.cached.raw" | grep -v '^  Cached ' > "$output.cached"
     if ! diff -u "$output.fill" "$output.cached" > "$RESULT_DIR/$slug.cache-diff"; then
@@ -449,7 +462,7 @@ run_one() {
         # that has not changed, so a run that keeps them has to answer each from the cache and
         # replay none.
         if [ -s "$directory/node_modules/.cache/faultline/crashes.txt" ]; then
-            run_flt "$directory" "$node_options" "${arguments[@]+"${arguments[@]}"}" "${jobs_option[@]+"${jobs_option[@]}"}" > "$output.kept.raw" 2>&1
+            run_flt "$directory" "$node_options" "${arguments[@]+"${arguments[@]}"}" "${workers_option[@]+"${workers_option[@]}"}" > "$output.kept.raw" 2>&1
             if grep -q '^  Replayed ' "$output.kept.raw"; then
                 refuse "$slug" "a run replayed kept crashes of files that have not changed instead of reading their answers from the cache."
                 return
@@ -469,21 +482,21 @@ run_one() {
     fi
 
     # The report must not depend on how many workers shared the files, so one worker has to print
-    # what the run with four printed. An example that names its own --jobs is that comparison
+    # what the run with four printed. An example that names its own --workers is that comparison
     # already, and naming it twice is refused. This run reads no kept results but does read the
     # compile cache the first run filled, so it is also the comparison of a run that compiled
     # every file with one that compiled none.
-    if [ "${#jobs_option[@]}" -gt 0 ]; then
+    if [ "${#workers_option[@]}" -gt 0 ]; then
         rm -f "$directory/node_modules/.cache/faultline/crashes.txt"
-        run_flt "$directory" "$node_options" "${arguments[@]+"${arguments[@]}"}" --no-cache --jobs 1 > "$output.jobs-1.raw" 2>&1
-        normalise < "$output.jobs-1.raw" > "$output.jobs-1"
-        if ! diff -u "$output" "$output.jobs-1" > "$RESULT_DIR/$slug.jobs-1-diff"; then
+        run_flt "$directory" "$node_options" "${arguments[@]+"${arguments[@]}"}" --no-cache --workers 1 > "$output.workers-1.raw" 2>&1
+        normalise < "$output.workers-1.raw" > "$output.workers-1"
+        if ! diff -u "$output" "$output.workers-1" > "$RESULT_DIR/$slug.workers-1-diff"; then
             {
                 echo ""
-                echo "What it printed with --jobs 1 from the compile cache, against the run with --jobs 4 that filled it:"
-                cat "$RESULT_DIR/$slug.jobs-1-diff"
+                echo "What it printed with --workers 1 from the compile cache, against the run with --workers 4 that filled it:"
+                cat "$RESULT_DIR/$slug.workers-1-diff"
             } >> "$log"
-            refuse "$slug" "with --jobs 1 and the compile cache it printed a report other than the run with --jobs 4 that filled the cache."
+            refuse "$slug" "with --workers 1 and the compile cache it printed a report other than the run with --workers 4 that filled the cache."
             return
         fi
     fi
@@ -491,7 +504,7 @@ run_one() {
     # Checked again after the extra runs, because they too must write nothing outside node_modules.
     manifest_of "$directory" > "$RESULT_DIR/$slug.after-all"
     if ! diff -u "$RESULT_DIR/$slug.before" "$RESULT_DIR/$slug.after-all" > "$RESULT_DIR/$slug.footprint"; then
-        refuse "$slug" "a run with --jobs or the cache wrote into the repository it was fault testing, and the contract says it writes nothing."
+        refuse "$slug" "a run with --workers or the cache wrote into the repository it was fault testing, and the contract says it writes nothing."
         return
     fi
 

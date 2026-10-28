@@ -1,4 +1,5 @@
 Fault testing the JavaScript and TypeScript source in world-crash-under-injection.
+  Running up to <n> workers at once.
 
   Read 1 source file, 2 functions.
 

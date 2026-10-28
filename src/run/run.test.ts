@@ -3,7 +3,7 @@
 // the order the Zig Faultline prints it and exits 0 only at 100% with no failure; it writes the
 // report file, the kept crashes and the kept results under the cache directory and nowhere else in
 // the project; a later run loads an unchanged file's result instead of running it; `--no-cache`,
-// `--file`, `--function`, `--report`, `--full-report` and `--jobs` do what the user guide says;
+// `--file`, `--function`, `--report`, `--full-report` and `--workers` do what the user guide says;
 // kept crashes are replayed first and a token that names no call is dropped with a sentence; the
 // first crash is shown with the values a replay of it was made with. Method: a stand-in worker
 // whose shard facts and call answers are written out in each test, a project held in a file system
@@ -287,7 +287,7 @@ export function environmentOf(files: IFakeFileSystem, script: IScript, output: K
         toolModules: "/faultline/src",
         faultlineVersion: "0.1.0",
         seed: 7,
-        jobs: 2,
+        workers: 2,
         output,
         createWorker: (): IWorker => scriptedWorker(script),
         now: (): number => {
@@ -350,6 +350,7 @@ describe("runProject", () => {
         assert.deepEqual(ran.output.errors, []);
         assert.deepEqual(ran.output.lines, [
             "Fault testing the JavaScript and TypeScript source in project.",
+            "  Running up to 2 workers at once.",
             "",
             "  Read 1 source file, 1 function.",
             "",

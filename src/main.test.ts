@@ -14,9 +14,9 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { afterEach, describe, jest, test } from "@jest/globals";
 import { createFakeFileSystem, type IFakeFileSystem } from "./lib/fake-files.test.ts";
-import { createProjectWorker, main, processEnvironment, readToolVersion, toolModulesOf } from "./main.ts";
+import { createProjectWorker, main, processEnvironment, readOpenLimitMs, readToolVersion, toolModulesOf } from "./main.ts";
 import { ConsoleOutput } from "./report/output.ts";
-import type { IChildProcess, IErrorStream, IWorkerFactory, IWorkerSettings } from "./run/worker.ts";
+import { openLimitMs, type IChildProcess, type IErrorStream, type IWorkerFactory, type IWorkerSettings } from "./run/worker.ts";
 
 //
 // The URL of the entry file in a clone at `/tool`, whose `package.json` is two directories up.
@@ -170,6 +170,21 @@ describe("main", () => {
         assert.deepEqual(written, ["Faultline needs Node 24.0.0 or later and this is Node 22.22.2, so install Node 24 or later and run it again.\n"]);
     });
 
+    test("an open limit that is not a whole number of milliseconds is refused in one sentence and the process exits 1", async () => {
+        runAs("24.22.0", undefined);
+        process.env["FAULTLINE_OPEN_LIMIT_MS"] = "soon";
+        try {
+            const factory = new KeptFactory();
+            const written = await runFlt([], factory);
+            assert.equal(process.exitCode, 1);
+            assert.deepEqual(written, ["FAULTLINE_OPEN_LIMIT_MS is \"soon\", and it takes a whole number of milliseconds from 1 up.\n"]);
+            assert.equal(factory.settings.length, 0);
+        }
+        finally {
+            delete process.env["FAULTLINE_OPEN_LIMIT_MS"];
+        }
+    });
+
     test("Bun is refused whatever Node version it reports", async () => {
         runAs("24.22.0", "1.4.3");
         const written = await runFlt([], new KeptFactory());
@@ -196,6 +211,7 @@ describe("createProjectWorker", () => {
         const worker = createProjectWorker(factory, {
             entryUrl,
             projectRoot: "/project",
+            openLimitMs: 5000,
         });
         const facts = await worker.open({
             kind: "open",
@@ -211,13 +227,29 @@ describe("createProjectWorker", () => {
         assert.equal(started.childEntry, "/tool/src/run/child-main.ts");
         assert.equal(started.child.toolModules, "/tool/src");
         assert.equal(started.child.projectRoot, "/project");
+        assert.equal(started.openLimitMs, 5000);
     });
 
     test("a project given by a relative path is a mistake in the caller", () => {
         assert.throws(() => createProjectWorker(new KeptFactory(), {
             entryUrl,
             projectRoot: "project",
+            openLimitMs: 5000,
         }));
+    });
+});
+
+describe("readOpenLimitMs", () => {
+    test("with no variable set, a file may take Faultline's own limit to open", () => {
+        assert.equal(readOpenLimitMs(undefined), openLimitMs);
+    });
+
+    test("a whole number of milliseconds from 1 up is the limit, and anything else is refused", () => {
+        assert.equal(readOpenLimitMs("5000"), 5000);
+        assert.equal(readOpenLimitMs("1"), 1);
+        for (const variable of ["", "0", "-5", "1.5", "five", "05", "99999999999999999999"]) {
+            assert.equal(readOpenLimitMs(variable), undefined);
+        }
     });
 });
 
@@ -245,14 +277,14 @@ describe("processEnvironment", () => {
     test("a command works in the current directory with Faultline's version from its package.json, the process's own streams, a seed a token can carry and workers for that project", async () => {
         jest.spyOn(process, "cwd").mockReturnValue("/project");
         const factory = new KeptFactory();
-        const environment = await processEnvironment(entryUrl, toolFiles(), factory);
+        const environment = await processEnvironment(entryUrl, toolFiles(), factory, 5000);
         assert.equal(environment.projectRoot, "/project");
         assert.equal(environment.toolModules, "/tool/src");
         assert.equal(environment.faultlineVersion, "0.1.0");
         assert(Number.isInteger(environment.seed));
         assert(environment.seed >= 0);
         assert(environment.seed <= 4294967295);
-        assert(environment.jobs > 0);
+        assert(environment.workers > 0);
         assert(environment.output instanceof ConsoleOutput);
         assert(environment.now() > 0);
         const worker = environment.createWorker();
@@ -264,5 +296,6 @@ describe("processEnvironment", () => {
         });
         await worker.stop();
         assert.equal(factory.settings[0]?.child.projectRoot, "/project");
+        assert.equal(factory.settings[0]?.openLimitMs, 5000);
     });
 });

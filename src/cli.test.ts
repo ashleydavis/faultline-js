@@ -117,7 +117,7 @@ export function environmentOf(files: IFakeFileSystem, output: KeptLines, made: s
         toolModules: "/faultline/src",
         faultlineVersion: "0.1.0",
         seed: 3,
-        jobs: 1,
+        workers: 1,
         output,
         createWorker: (): IWorker => passingWorker(made),
         now: (): number => 0,

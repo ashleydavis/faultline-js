@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import { describe, test } from "@jest/globals";
 import type { Walked } from "../discover/sources.ts";
-import { countJobs, defaultJobs, listShards, mergeShards, runShards, workerMemoryBytes, workShards, type IShardQueue } from "./driver.ts";
+import { coresLeftFree, countWorkers, defaultWorkers, listShards, mergeShards, runShards, workShards, type IShardQueue } from "./driver.ts";
 import type { IShardResult } from "./explore.ts";
 import { pathKey } from "./measure.ts";
 import type { ICallResult, IOpenRequest, IShardFacts } from "./messages.ts";
@@ -165,14 +165,14 @@ describe("runShards", () => {
             walked,
             shards: listShards(walked),
             seed: 3,
-            jobs: 1,
+            workers: 1,
         }, () => scriptedWorker(oneLog));
         const manyLog: string[] = [];
         const many = await runShards({
             walked,
             shards: listShards(walked),
             seed: 3,
-            jobs: 3,
+            workers: 3,
         }, () => scriptedWorker(manyLog));
         assert.deepEqual(many, one);
         assert.deepEqual(one.shards.map((shard) => shard.facts.file), ["src/a.ts", "src/b.ts", "global.sim.ts", "src/a.sim.ts"]);
@@ -187,7 +187,7 @@ describe("runShards", () => {
             walked,
             shards: listShards(walked),
             seed: 3,
-            jobs: 16,
+            workers: 16,
         }, () => scriptedWorker(log));
         assert.equal(log.filter((line) => line === "stop").length, 4);
     });
@@ -202,7 +202,7 @@ describe("runShards", () => {
             walked,
             shards: listShards(walked),
             seed: 3,
-            jobs: 1,
+            workers: 1,
         }, () => failing), /the worker broke/);
         assert.deepEqual(log, ["stop"]);
     });
@@ -216,7 +216,7 @@ describe("runShards with fewer shards", () => {
             walked,
             shards: [shards[1]!],
             seed: 3,
-            jobs: 4,
+            workers: 4,
         }, () => scriptedWorker(log));
         assert.deepEqual(ran.shards.map((shard) => shard.facts.file), [shards[1]!.file]);
         assert.deepEqual(log.filter((line) => line.startsWith("open")), [`open ${shards[1]!.file}`]);
@@ -225,7 +225,7 @@ describe("runShards with fewer shards", () => {
             walked,
             shards: [],
             seed: 3,
-            jobs: 4,
+            workers: 4,
         }, () => scriptedWorker(none));
         assert.deepEqual(empty.shards, []);
         assert.deepEqual(none, []);
@@ -261,33 +261,27 @@ describe("mergeShards", () => {
     });
 });
 
-describe("defaultJobs", () => {
-    test("the workers this machine's cores and free memory hold", () => {
-        assert.ok(defaultJobs() <= os.availableParallelism());
-        assert.ok(defaultJobs() >= 1);
+describe("defaultWorkers", () => {
+    test("the workers this machine's cores run, leaving two cores free", () => {
+        assert.equal(defaultWorkers(), Math.max(1, os.availableParallelism() - 2));
     });
 });
 
-describe("countJobs", () => {
-    test("one worker per core when the memory holds them all", () => {
-        assert.equal(countJobs(4, workerMemoryBytes * 8), 4);
-        assert.equal(countJobs(4, workerMemoryBytes * 4), 4);
+describe("countWorkers", () => {
+    test("one worker per core less the two left free", () => {
+        assert.equal(coresLeftFree, 2);
+        assert.equal(countWorkers(14), 12);
+        assert.equal(countWorkers(4), 2);
+        assert.equal(countWorkers(3), 1);
     });
 
-    test("no more workers than the free memory holds", () => {
-        assert.equal(countJobs(14, workerMemoryBytes * 9.5), 9);
-        assert.equal(countJobs(14, workerMemoryBytes * 2), 2);
+    test("one worker on a machine of one or two cores", () => {
+        assert.equal(countWorkers(2), 1);
+        assert.equal(countWorkers(1), 1);
     });
 
-    test("one worker however little memory is free", () => {
-        assert.equal(countJobs(8, workerMemoryBytes - 1), 1);
-        assert.equal(countJobs(8, 0), 1);
-        assert.equal(countJobs(1, workerMemoryBytes * 100), 1);
-    });
-
-    test("cores that are not a whole number above zero, or negative memory, are a programmer error", () => {
-        assert.throws(() => countJobs(0, workerMemoryBytes), assert.AssertionError);
-        assert.throws(() => countJobs(1.5, workerMemoryBytes), assert.AssertionError);
-        assert.throws(() => countJobs(2, -1), assert.AssertionError);
+    test("cores that are not a whole number above zero are a programmer error", () => {
+        assert.throws(() => countWorkers(0), assert.AssertionError);
+        assert.throws(() => countWorkers(1.5), assert.AssertionError);
     });
 });

@@ -26,6 +26,7 @@ import {
     firstFailureLines,
     fullReportLines,
     headerLine,
+    workersLine,
     problemLines,
     progressLine,
     readCountLines,
@@ -94,7 +95,7 @@ export interface IRunEnvironment {
     //
     // How many workers run at once when the command line does not say.
     //
-    jobs: number;
+    workers: number;
 
     //
     // Where the lines go.
@@ -187,6 +188,8 @@ export async function runProject(environment: IRunEnvironment, options: IOptions
             return 1;
         }
     }
+    const workers = options.workers ?? environment.workers;
+    output.print(workersLine(workers));
     const kept = await readCrashes(environment.files, crashStorePath(root));
     if (!kept.ok) {
         output.printError(kept.error);
@@ -203,7 +206,7 @@ export async function runProject(environment: IRunEnvironment, options: IOptions
         walked,
         shards: shards.filter((_shard, position) => !plan.entries[position]),
         seed: environment.seed,
-        jobs: options.jobs ?? environment.jobs,
+        workers,
     }, () => new RunWorker(environment, options.functionName, progress, environment.createWorker()));
     const results = joinResults(plan, ran.shards);
     if (options.functionName) {

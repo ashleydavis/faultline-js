@@ -16,10 +16,10 @@ import { main as runFaultline } from "./cli.ts";
 import type { IFileSystem } from "./lib/file-system.ts";
 import { nodeVersionRefusal, readRequiredNode } from "./load/node-version.ts";
 import { ConsoleOutput } from "./report/output.ts";
-import { defaultJobs } from "./run/driver.ts";
+import { defaultWorkers } from "./run/driver.ts";
 import type { IRunEnvironment } from "./run/run.ts";
 import { largestSeed } from "./run/token.ts";
-import { createWorker, defaultWorkerSettings, type IWorker, type IWorkerFactory } from "./run/worker.ts";
+import { createWorker, defaultWorkerSettings, openLimitMs, type IWorker, type IWorkerFactory } from "./run/worker.ts";
 
 //
 // The directory Faultline's own modules sit in, from the URL of the entry file: `src` (run as
@@ -35,16 +35,42 @@ export function toolModulesOf(entryUrl: string): string {
 
 //
 // Makes a worker for the project at `places.projectRoot`, whose child runs `run/child-main` from the
-// same directory as the modules of the entry file at `places.entryUrl`.
+// same directory as the modules of the entry file at `places.entryUrl`, and gives up on opening a
+// file after `places.openLimitMs`.
 //
-export function createProjectWorker(factory: IWorkerFactory, places: { entryUrl: string; projectRoot: string }): IWorker {
+export function createProjectWorker(factory: IWorkerFactory, places: { entryUrl: string; projectRoot: string; openLimitMs: number }): IWorker {
     const entryUrl = places.entryUrl;
     const projectRoot = places.projectRoot;
     assert(path.isAbsolute(projectRoot));
     const toolModules = toolModulesOf(entryUrl);
     const childEntry = path.join(toolModules, "run", `child-main${path.extname(fileURLToPath(entryUrl))}`);
     assert(childEntry.startsWith(toolModules));
-    return createWorker(defaultWorkerSettings(projectRoot, toolModules, childEntry), factory);
+    assert(places.openLimitMs > 0);
+    return createWorker({
+        ...defaultWorkerSettings(projectRoot, toolModules, childEntry),
+        openLimitMs: places.openLimitMs,
+    }, factory);
+}
+
+//
+// How long a worker may take to open a file: `FAULTLINE_OPEN_LIMIT_MS` when it is set, so a test
+// of a file that never finishes opening can wait a few seconds rather than the full limit, and
+// `openLimitMs` otherwise. Undefined when the variable is set to anything but a whole number of
+// milliseconds from 1 up.
+//
+export function readOpenLimitMs(variable: string | undefined): number | undefined {
+    if (variable === undefined) {
+        return openLimitMs;
+    }
+    if (!/^[1-9][0-9]*$/.test(variable)) {
+        return undefined;
+    }
+    const limitMs = Number(variable);
+    if (!Number.isSafeInteger(limitMs)) {
+        return undefined;
+    }
+    assert(limitMs > 0);
+    return limitMs;
 }
 
 //
@@ -67,7 +93,7 @@ export async function readToolVersion(files: IFileSystem, packageFile: string): 
 // the entry file's modules, the process's own streams, the wall clock, a new seed and one worker per
 // core.
 //
-export async function processEnvironment(entryUrl: string, files: IFileSystem, factory: IWorkerFactory): Promise<IRunEnvironment> {
+export async function processEnvironment(entryUrl: string, files: IFileSystem, factory: IWorkerFactory, openLimitMs: number): Promise<IRunEnvironment> {
     const faultlineVersion = await readToolVersion(files, fileURLToPath(new URL("../../package.json", entryUrl)));
     const projectRoot = process.cwd();
     assert(path.isAbsolute(projectRoot));
@@ -77,7 +103,7 @@ export async function processEnvironment(entryUrl: string, files: IFileSystem, f
         toolModules: toolModulesOf(entryUrl),
         faultlineVersion,
         seed: randomInt(0, largestSeed + 1),
-        jobs: defaultJobs(),
+        workers: defaultWorkers(),
         output: new ConsoleOutput({
             out: process.stdout,
             errors: process.stderr,
@@ -85,6 +111,7 @@ export async function processEnvironment(entryUrl: string, files: IFileSystem, f
         createWorker: (): IWorker => createProjectWorker(factory, {
             entryUrl,
             projectRoot,
+            openLimitMs,
         }),
         now: (): number => Date.now(),
     };
@@ -104,7 +131,13 @@ export async function main(entryUrl: string, files: IFileSystem, factory: IWorke
     };
     const refusal = nodeVersionRefusal(versions, await readRequiredNode(files, packageFile));
     if (!refusal) {
-        const environment = await processEnvironment(entryUrl, files, factory);
+        const limitMs = readOpenLimitMs(process.env["FAULTLINE_OPEN_LIMIT_MS"]);
+        if (limitMs === undefined) {
+            process.stderr.write(`FAULTLINE_OPEN_LIMIT_MS is "${process.env["FAULTLINE_OPEN_LIMIT_MS"]}", and it takes a whole number of milliseconds from 1 up.\n`);
+            process.exitCode = 1;
+            return;
+        }
+        const environment = await processEnvironment(entryUrl, files, factory, limitMs);
         process.exitCode = await runFaultline(process.argv.slice(2), environment);
     }
     else {

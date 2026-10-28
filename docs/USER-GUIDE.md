@@ -96,14 +96,15 @@ This leaves out everything under `bench` and the one file `tools/harness.ts`. `t
 
 ### Options
 
-Type these after `npx flt` on the command line, for example `npx flt --file src/format.ts`:
+Type these after `npx flt` on the command line, for example `npx flt --file src/format.ts`. A value goes after a space or after an equals sign (`--workers 10` or `--workers=10`), and a `--` in front of the options, as in `npx flt -- --workers 10`, is left out:
 
 - `--file <path>` and `--function <name>` narrow Faultline to one file or one function. The coverage percentage then covers only what you asked for. A run narrowed to a source file also runs the scenarios in the sim files that file uses: the one beside it and every `global.sim.ts`. It makes no calls of the functions in other files, so a code path that only those calls exercise is counted as not exercised.
 - `--report <path>` moves the full checklist.
 - `--replay "<token>"` reproduces a failure Faultline already reported.
-- `--jobs <n>` sets how many workers run at once. By default there is one per processor core, and no more than the free memory holds at two gigabytes each, so a run never uses more memory than the machine has free. The report is the same whatever the number.
+- `--workers <n>` sets how many workers run at once. By default there is one per processor core less two, and at least one, so two cores are left for the rest of the machine. The report is the same whatever the number.
 - `--full-report` prints a block for every source file with a line for every function: whether all its code paths were exercised, how many and how many calls were made. Without it the run prints the totals and the checklist only.
 - `--no-cache` executes every file and keeps no results (see below).
+- The environment variable `FAULTLINE_OPEN_LIMIT_MS` sets how long, in milliseconds, opening a file may take before Faultline reports its top level as a call that never returned. It is 30000 when not set. Any value that is not a whole number from 1 up is refused with a sentence and exit 1.
 
 ## Step 4: Run Faultline
 

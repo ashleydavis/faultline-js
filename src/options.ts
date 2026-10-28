@@ -48,7 +48,7 @@ export interface IOptions {
     //
     // How many workers run at once, or undefined for one per processor core.
     //
-    jobs: number | undefined;
+    workers: number | undefined;
 
     //
     // Whether to execute every file and keep no results.
@@ -68,7 +68,7 @@ export interface IOptionsError {
     //
     // Which error it is.
     //
-    name: "unknown-option" | "missing-value" | "bad-jobs" | "repeated-option" | "replay-with-more";
+    name: "unknown-option" | "missing-value" | "bad-workers" | "repeated-option" | "replay-with-more";
 
     //
     // A sentence for the person running Faultline, saying what is wrong and what to type.
@@ -123,7 +123,7 @@ export function defaultOptions(): IOptions {
         functionName: undefined,
         token: undefined,
         report: undefined,
-        jobs: undefined,
+        workers: undefined,
         noCache: false,
         fullReport: false,
     };
@@ -132,15 +132,16 @@ export function defaultOptions(): IOptions {
 //
 // The options that take a value after them.
 //
-const valueOptions = ["--file", "--function", "--replay", "--report", "--jobs"];
+const valueOptions = ["--file", "--function", "--replay", "--report", "--workers"];
 
 //
 // Reads the arguments typed after `flt`. `clear` stands alone. `--replay` takes its token and no
 // other option, because a replay makes one call and nothing else changes it. Every other option may
 // be given once, in any order.
 //
-export function readOptions(argumentList: string[]): OptionsResult {
-    assert(Array.isArray(argumentList));
+export function readOptions(typed: string[]): OptionsResult {
+    assert(Array.isArray(typed));
+    const argumentList = splitArguments(typed);
     const options = defaultOptions();
     if (argumentList[0] === "clear") {
         if (argumentList.length === 1) {
@@ -171,7 +172,7 @@ export function readOptions(argumentList: string[]): OptionsResult {
             continue;
         }
         if (!valueOptions.includes(option)) {
-            return failedOptions("unknown-option", `The flt command has no option ${option}. Its options are --file <path>, --function <name>, --replay "<token>", --report <path>, --jobs <n>, --no-cache and --full-report, and npx flt clear throws the kept results away.`);
+            return failedOptions("unknown-option", `The flt command has no option ${option}. Its options are --file <path>, --function <name>, --replay "<token>", --report <path>, --workers <n>, --no-cache and --full-report, and npx flt clear throws the kept results away.`);
         }
         const value = argumentList[index + 1];
         if (!value) {
@@ -192,11 +193,33 @@ export function readOptions(argumentList: string[]): OptionsResult {
         }
         options.command = "replay";
     }
-    assert(options.jobs === undefined || options.jobs > 0);
+    assert(options.workers === undefined || options.workers > 0);
     return {
         ok: true,
         value: options,
     };
+}
+
+//
+// The arguments as `readOptions` reads them: a `--` in front of them dropped, because `npx flt --
+// <options>` is how npm and Bun pass options on, and an option written `--workers=10` split into
+// `--workers` and `10`, the way most commands take it. A value is split off at its first `=` only,
+// so a replay token, which holds `=` itself, keeps the rest.
+//
+export function splitArguments(typed: string[]): string[] {
+    const words = typed[0] === "--" ? typed.slice(1) : typed;
+    const split: string[] = [];
+    for (const word of words) {
+        const equals = word.indexOf("=");
+        if (word.startsWith("--") && equals > 2) {
+            split.push(word.slice(0, equals), word.slice(equals + 1));
+        }
+        else {
+            split.push(word);
+        }
+    }
+    assert(split.length >= words.length);
+    return split;
 }
 
 //
@@ -223,11 +246,11 @@ export function setValue(options: IOptions, given: { option: string; value: stri
                     options.report = value;
                 }
                 else {
-                    const jobs = readJobs(value);
-                    if (!jobs) {
-                        return failedOptions("bad-jobs", `The option --jobs takes a whole number from 1 up, and "${value}" is not one.`);
+                    const workers = readWorkers(value);
+                    if (!workers) {
+                        return failedOptions("bad-workers", `The option --workers takes a whole number from 1 up, and "${value}" is not one.`);
                     }
-                    options.jobs = jobs;
+                    options.workers = workers;
                 }
             }
         }
@@ -241,16 +264,16 @@ export function setValue(options: IOptions, given: { option: string; value: stri
 //
 // The number of workers `text` names, or undefined when it is not a whole number from 1 up.
 //
-export function readJobs(text: string): number | undefined {
+export function readWorkers(text: string): number | undefined {
     if (!/^[1-9][0-9]*$/.test(text)) {
         return undefined;
     }
-    const jobs = Number(text);
-    if (!Number.isSafeInteger(jobs)) {
+    const workers = Number(text);
+    if (!Number.isSafeInteger(workers)) {
         return undefined;
     }
-    assert(jobs > 0);
-    return jobs;
+    assert(workers > 0);
+    return workers;
 }
 
 //
@@ -264,7 +287,7 @@ export function placeholderOf(option: string): string {
     if (option === "--function") {
         return "<name>";
     }
-    if (option === "--jobs") {
+    if (option === "--workers") {
         return "<n>";
     }
     return "<path>";

@@ -1,5 +1,5 @@
 {
-    "name": "option-jobs",
+    "name": "option-workers",
     "private": true,
     "type": "module",
     "devDependencies": {

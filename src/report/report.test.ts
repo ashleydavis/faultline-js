@@ -22,6 +22,7 @@ import {
     firstFailureLines,
     fullReportLines,
     headerLine,
+    workersLine,
     kindWords,
     problemLines,
     progressLine,
@@ -95,6 +96,18 @@ export function failureOf(kind: FailureKind, at: { file: string; name: string })
         stack: "",
     };
 }
+
+describe("workersLine", () => {
+    test("the most workers a run starts, one worker in the singular", () => {
+        assert.equal(workersLine(1), "  Running up to 1 worker at once.");
+        assert.equal(workersLine(12), "  Running up to 12 workers at once.");
+    });
+
+    test("a count that is not a whole number above zero is a programmer error", () => {
+        assert.throws(() => workersLine(0), assert.AssertionError);
+        assert.throws(() => workersLine(1.5), assert.AssertionError);
+    });
+});
 
 describe("headerLine", () => {
     test("names the project by its directory", () => {
