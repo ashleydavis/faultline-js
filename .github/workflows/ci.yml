@@ -10,7 +10,8 @@ name: CI
 env:
   # The release mise.toml pins, so CI runs the same Bun as every machine. Change both together.
   BUN_VERSION: "1.4.3"
-  # The Node the smoke tests run the examples in, because Faultline runs the code it tests in Node.
+  # The Node the unit tests run in and the smoke tests run the examples in, because Faultline runs
+  # the code it tests in Node 24 or later.
   NODE_VERSION: "24.22.0"
 
 on:
@@ -33,6 +34,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # Jest starts with `#!/usr/bin/env node`, so without this step the unit tests ran in whatever
+      # Node the runner image has, not the Node 24 or later `engines.node` asks for. There the two
+      # tests of a server that fails part way through, in `src/world/effects/http-loopback.test.ts`,
+      # timed out at 5000 ms. They time out the same way under Node 20 and 22 and pass under 24.
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
