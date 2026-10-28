@@ -1,0 +1,9 @@
+{
+    "name": "project-bun",
+    "private": true,
+    "module": "src/index.ts",
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

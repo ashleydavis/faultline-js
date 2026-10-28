@@ -1,0 +1,8 @@
+{
+    "name": "sim-value-factory-for-an-alias",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

@@ -1,0 +1,9 @@
+{
+    "name": "load-package-requires-built-in",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../..",
+        "legacy-settings": "file:./packages/legacy-settings"
+    }
+}

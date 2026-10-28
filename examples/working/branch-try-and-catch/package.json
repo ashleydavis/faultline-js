@@ -1,0 +1,8 @@
+{
+    "name": "branch-try-and-catch",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

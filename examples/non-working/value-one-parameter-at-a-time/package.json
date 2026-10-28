@@ -1,0 +1,8 @@
+{
+    "name": "value-one-parameter-at-a-time",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

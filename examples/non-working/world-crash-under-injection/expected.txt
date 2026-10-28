@@ -1,0 +1,26 @@
+Fault testing the JavaScript and TypeScript source in world-crash-under-injection.
+
+  Read 1 source file, 2 functions.
+
+-- CRASH src/status.ts:20:20 -----------------------------------------------------------------------
+The call to statusOf crashed with TypeError: Cannot read properties of undefined (reading 'status').
+
+  Injected: the 1st network call failed with "Name does not resolve".
+
+  20 |     return answer!.status;
+     |                    ^
+
+  Stack trace:
+    at src/status.ts:20:20
+    at npx flt
+
+  Hint: This line reads a property of a value that was undefined or null. Check for it first, or make sure no caller can pass it.
+Reproduce it with: npx flt --replay "src/status.ts:statusOf;seed=<seed>;fail=network#0/name-does-not-resolve"
+
+  1 call crashed, in 1 function.
+
+  Coverage: 3 of 3 code paths, 100%.
+
+  Exercised 3 code paths, 2 functions, 1 file.
+
+  Every failure and every thing to do is in <cache>/report.txt.

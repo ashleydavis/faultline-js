@@ -1,0 +1,14 @@
+Fault testing the JavaScript and TypeScript source in call-never-settles.
+
+  Read 1 source file, 2 functions.
+
+The call to nextMessage never returned.
+Reproduce it with: npx flt --replay "src/inbox.ts:nextMessage;seed=<seed>"
+
+  1 call did not return in time, in 1 function.
+
+  Coverage: 3 of 3 code paths, 100%.
+
+  Exercised 3 code paths, 2 functions, 1 file.
+
+  Every failure and every thing to do is in <cache>/report.txt.

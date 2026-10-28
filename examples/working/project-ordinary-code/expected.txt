@@ -1,0 +1,11 @@
+Fault testing the JavaScript and TypeScript source in project-ordinary-code.
+
+  Read 2 source files, 7 functions.
+
+  No call crashed, hung or found an expectation false.
+
+  Coverage: 26 of 26 code paths, 100%.
+
+  Exercised 26 code paths, 7 functions, 2 files.
+
+  Every failure and every thing to do is in <cache>/report.txt.

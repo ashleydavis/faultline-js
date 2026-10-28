@@ -1,0 +1,8 @@
+{
+    "name": "sim-expectation-after-scenario",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

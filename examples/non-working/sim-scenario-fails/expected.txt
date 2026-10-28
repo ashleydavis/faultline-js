@@ -1,0 +1,14 @@
+Fault testing the JavaScript and TypeScript source in sim-scenario-fails.
+
+  Read 1 source file, 2 functions.
+
+The expectation "One plus one is three." in addsWrong did not hold. (src/adding.sim.ts:15)
+Reproduce it with: npx flt --replay "src/adding.sim.ts:addsWrong;seed=<seed>"
+
+  1 expectation was false, in 1 scenario.
+
+  Coverage: 2 of 2 code paths, 100%.
+
+  Exercised 2 code paths, 2 functions, 1 file.
+
+  Every failure and every thing to do is in <cache>/report.txt.

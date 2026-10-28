@@ -1,0 +1,11 @@
+Fault testing the JavaScript and TypeScript source in sim-expectation-after-calls.
+
+  Read 1 source file, 6 functions.
+
+  No call crashed, hung or found an expectation false.
+
+  Coverage: 12 of 12 code paths, 100%.
+
+  Exercised 12 code paths, 6 functions, 1 file.
+
+  Every failure and every thing to do is in <cache>/report.txt.

@@ -1,0 +1,12 @@
+Fault testing the JavaScript and TypeScript source in load-file-does-not-parse.
+
+  Read 1 source file, 0 functions.
+  src/broken.ts does not parse, so it was not loaded: src/broken.ts:6:1: '}' expected.
+
+  No call crashed, hung or found an expectation false.
+
+  Coverage: 0 of 0 code paths, 100%.
+
+  Exercised 0 code paths, 0 functions, 0 files.
+
+  Every failure and every thing to do is in <cache>/report.txt.

@@ -1,0 +1,14 @@
+Fault testing the JavaScript and TypeScript source in sim-missing-value-factory.
+
+  Read 1 source file, 2 functions.
+
+  One thing to do:
+    Write a value factory returning symbol, which nameOf takes. Without one, nameOf at src/tagging.ts:16 cannot be called at all.
+
+  No call crashed, hung or found an expectation false.
+
+  Coverage: 1 of 4 code paths, 25%.
+
+  Exercised 1 code path, 1 function, 1 file.
+
+  Every failure and every thing to do is in <cache>/report.txt.

@@ -1,0 +1,8 @@
+{
+    "name": "branch-loops",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

@@ -1,0 +1,2 @@
+Fault testing the JavaScript and TypeScript source in config-unknown-key.
+The faultline.config.yaml holds the key "exlude", and it may hold only "include" and "exclude".

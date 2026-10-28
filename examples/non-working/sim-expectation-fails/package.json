@@ -1,0 +1,8 @@
+{
+    "name": "sim-expectation-fails",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

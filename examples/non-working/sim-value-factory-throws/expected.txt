@@ -1,0 +1,27 @@
+Fault testing the JavaScript and TypeScript source in sim-value-factory-throws.
+
+  Read 1 source file, 2 functions.
+
+-- CRASH src/shelves.sim.ts:11:11 ------------------------------------------------------------------
+The call to isEmpty was not made, because building its values failed with Error: The shelf file is missing.
+
+  11 |     throw new Error("The shelf file is missing.");
+     |           ^
+
+  Stack trace:
+    at src/shelves.sim.ts:11:11
+    at npx flt
+
+  Hint: Building a value for the call failed on this line, so the function was never called. Make the value factory return a value of its type.
+Reproduce it with: npx flt --replay "src/shelves.ts:isEmpty;seed=<seed>;values=f0"
+
+  One thing to do:
+    Write a value factory that reaches the body of isEmpty at src/shelves.ts:20 in isEmpty, or a scenario that exercises it if no value factory can.
+
+  1 call crashed, in 1 function.
+
+  Coverage: 1 of 2 code paths, 50%.
+
+  Exercised 1 code path, 1 function, 1 file.
+
+  Every failure and every thing to do is in <cache>/report.txt.

@@ -1,0 +1,8 @@
+{
+    "name": "config-include",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

@@ -1,0 +1,8 @@
+{
+    "name": "world-every-failure-at-every-place",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

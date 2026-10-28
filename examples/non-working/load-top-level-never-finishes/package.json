@@ -1,0 +1,8 @@
+{
+    "name": "load-top-level-never-finishes",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

@@ -1,0 +1,8 @@
+{
+    "name": "world-files-network-and-clock",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

@@ -1,0 +1,8 @@
+{
+    "name": "sim-expectation-after-calls",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

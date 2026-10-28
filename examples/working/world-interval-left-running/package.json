@@ -1,0 +1,8 @@
+{
+    "name": "world-interval-left-running",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

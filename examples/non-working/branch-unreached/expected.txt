@@ -1,0 +1,14 @@
+Fault testing the JavaScript and TypeScript source in branch-unreached.
+
+  Read 1 source file, 2 functions.
+
+  One thing to do:
+    Write a value factory that reaches the true side of the if at src/magic.ts:13 in isMagic, or a scenario that exercises it if no value factory can.
+
+  No call crashed, hung or found an expectation false.
+
+  Coverage: 3 of 4 code paths, 75%.
+
+  Exercised 3 code paths, 2 functions, 1 file.
+
+  Every failure and every thing to do is in <cache>/report.txt.

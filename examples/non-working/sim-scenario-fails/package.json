@@ -1,0 +1,8 @@
+{
+    "name": "sim-scenario-fails",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

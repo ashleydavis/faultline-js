@@ -1,0 +1,86 @@
+#
+# Build, unit-test and smoke-test on every push and pull request.
+#
+# Bun installs the packages, builds and runs the unit tests. The smoke tests also set up Node,
+# because Faultline runs the code it tests in Node and V8 is what counts the blocks that ran. They
+# run every example under `examples/` against the tool built from this commit.
+#
+name: CI
+
+env:
+  # The release mise.toml pins, so CI runs the same Bun as every machine. Change both together.
+  BUN_VERSION: "1.4.3"
+  # The Node the smoke tests run the examples in, because Faultline runs the code it tests in Node.
+  NODE_VERSION: "24.22.0"
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  # The unit tests start no example, so they run on a runner of their own while the smoke tests run
+  # every example.
+  unit-test:
+    timeout-minutes: 20
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        run: bun run build
+
+      - name: Unit tests
+        run: bun run test
+
+  # Each example starts Node processes of its own, so the examples are split across runners to keep
+  # the suite short.
+  smoke-test:
+    name: Smoke tests ${{ matrix.shard }} of 3
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    strategy:
+      # Every shard runs, so one failing does not hide what the others found.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        run: bun run build
+
+      - name: Smoke tests
+        run: bash scripts/smoke.sh --shard ${{ matrix.shard }}/3

@@ -1,0 +1,8 @@
+{
+    "name": "load-code-made-at-run-time",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

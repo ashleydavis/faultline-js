@@ -1,0 +1,9 @@
+# What installing, building, testing and running the tools write into the clone, none of which
+# belongs in the repository.
+node_modules/
+*.tsbuildinfo
+dist/
+*.tgz
+tmp/
+.what-changed/
+/coverage/

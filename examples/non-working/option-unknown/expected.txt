@@ -1,0 +1,1 @@
+The flt command has no option --made-up-option. Its options are --file <path>, --function <name>, --replay "<token>", --report <path>, --jobs <n>, --no-cache and --full-report, and npx flt clear throws the kept results away.

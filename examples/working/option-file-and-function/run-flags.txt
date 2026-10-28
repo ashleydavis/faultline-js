@@ -1,0 +1,4 @@
+--file
+src/wanted.ts
+--function
+wanted

@@ -1,0 +1,8 @@
+{
+    "name": "world-symlink",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

@@ -1,0 +1,8 @@
+{
+    "name": "sim-value-factory-for-an-instance",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

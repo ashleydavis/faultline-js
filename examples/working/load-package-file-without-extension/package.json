@@ -1,0 +1,9 @@
+{
+    "name": "load-package-file-without-extension",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "clock-words": "file:./packages/clock-words",
+        "faultline": "file:../../.."
+    }
+}

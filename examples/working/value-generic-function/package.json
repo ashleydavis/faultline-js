@@ -1,0 +1,8 @@
+{
+    "name": "value-generic-function",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

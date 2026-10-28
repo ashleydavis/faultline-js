@@ -1,0 +1,8 @@
+{
+    "name": "call-never-settles",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

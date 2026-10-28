@@ -1,0 +1,8 @@
+{
+    "name": "world-top-level-reads-the-environment",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

@@ -1,0 +1,44 @@
+{
+    "name": "faultline",
+    "version": "0.1.0",
+    "description": "Runs every code path in every JavaScript and TypeScript function in your project, and reports the ones no call reached.",
+    "type": "module",
+    "bin": {
+        "flt": "./dist/bin/flt.js"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/sim/index.d.ts",
+            "default": "./dist/sim/index.js"
+        }
+    },
+    "engines": {
+        "node": ">=24.0.0"
+    },
+    "files": [
+        "dist",
+        "!dist/**/*.test.*",
+        "!dist/smoke",
+        "docs",
+        "README.md"
+    ],
+    "scripts": {
+        "build": "tsc",
+        "test": "jest",
+        "coverage": "jest --coverage",
+        "smoke": "bash scripts/smoke.sh",
+        "prepare": "tsc"
+    },
+    "dependencies": {
+        "@jridgewell/trace-mapping": "0.3.31",
+        "typescript": "5.9.3",
+        "yaml": "2.9.1"
+    },
+    "devDependencies": {
+        "@jest/globals": "30.5.2",
+        "@types/node": "22.20.3",
+        "jest": "30.5.2",
+        "ts-jest": "29.4.15"
+    },
+    "license": "MIT"
+}

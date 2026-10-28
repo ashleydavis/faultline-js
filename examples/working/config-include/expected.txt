@@ -1,0 +1,11 @@
+Fault testing the JavaScript and TypeScript source in config-include.
+
+  Read 2 source files, 4 functions.
+
+  No call crashed, hung or found an expectation false.
+
+  Coverage: 9 of 9 code paths, 100%.
+
+  Exercised 9 code paths, 4 functions, 2 files.
+
+  Every failure and every thing to do is in <cache>/report.txt.

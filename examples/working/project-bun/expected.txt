@@ -1,0 +1,11 @@
+Fault testing the JavaScript and TypeScript source in project-bun.
+
+  Read 2 source files, 4 functions.
+
+  No call crashed, hung or found an expectation false.
+
+  Coverage: 7 of 7 code paths, 100%.
+
+  Exercised 7 code paths, 4 functions, 2 files.
+
+  Every failure and every thing to do is in <cache>/report.txt.

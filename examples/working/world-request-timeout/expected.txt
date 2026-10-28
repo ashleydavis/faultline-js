@@ -1,0 +1,11 @@
+Fault testing the JavaScript and TypeScript source in world-request-timeout.
+
+  Read 1 source file, 2 functions.
+
+  No call crashed, hung or found an expectation false.
+
+  Coverage: 8 of 8 code paths, 100%.
+
+  Exercised 8 code paths, 2 functions, 1 file.
+
+  Every failure and every thing to do is in <cache>/report.txt.

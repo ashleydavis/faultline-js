@@ -1,0 +1,8 @@
+{
+    "name": "branch-await-in-a-side",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

@@ -1,0 +1,8 @@
+{
+    "name": "call-message-over-several-lines",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

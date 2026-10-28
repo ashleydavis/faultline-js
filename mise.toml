@@ -1,0 +1,10 @@
+[tools]
+# Bun installs the dependencies and runs the package scripts, so every machine installs the same
+# tree from `bun.lock`.
+bun = "1.4.3"
+# Faultline runs the code it tests in Node, because V8 is what counts the code paths, and it needs
+# Node 24 for its module hooks. The smoke tests run the built tool with this Node.
+node = "24.22.0"
+# `scripts/test-everything.sh` asks what-changed which targets a change affects, and it and the
+# smoke tests record a what-changed baseline for each target that passes.
+"github:ashleydavis/what-changed" = "0.0.6"

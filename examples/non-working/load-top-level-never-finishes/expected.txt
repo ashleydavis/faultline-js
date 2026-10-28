@@ -1,0 +1,15 @@
+Fault testing the JavaScript and TypeScript source in load-top-level-never-finishes.
+
+  Read 1 source file, 1 function.
+  The child process opening src/waiting.ts did not finish within 30000 milliseconds.
+
+The call to (top level) never returned.
+Reproduce it with: npx flt --replay "src/waiting.ts:(top level);seed=<seed>"
+
+  1 call did not return in time, in 1 function.
+
+  Coverage: 0 of 0 code paths, 100%.
+
+  Exercised 0 code paths, 0 functions, 0 files.
+
+  Every failure and every thing to do is in <cache>/report.txt.

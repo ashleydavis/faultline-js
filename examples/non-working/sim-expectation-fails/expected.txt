@@ -1,0 +1,14 @@
+Fault testing the JavaScript and TypeScript source in sim-expectation-fails.
+
+  Read 1 source file, 4 functions.
+
+The expectation "The count never goes below zero." in countIsNeverNegative did not hold. (src/counter.sim.ts:15)
+Reproduce it with: npx flt --replay "src/counter.ts:spendOne;seed=<seed>"
+
+  1 expectation was false, in 1 function.
+
+  Coverage: 4 of 4 code paths, 100%.
+
+  Exercised 4 code paths, 4 functions, 1 file.
+
+  Every failure and every thing to do is in <cache>/report.txt.

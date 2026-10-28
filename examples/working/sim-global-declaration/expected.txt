@@ -1,0 +1,11 @@
+Fault testing the JavaScript and TypeScript source in sim-global-declaration.
+
+  Read 2 source files, 3 functions.
+
+  No call crashed, hung or found an expectation false.
+
+  Coverage: 5 of 5 code paths, 100%.
+
+  Exercised 5 code paths, 3 functions, 2 files.
+
+  Every failure and every thing to do is in <cache>/report.txt.

@@ -1,0 +1,8 @@
+{
+    "name": "world-server-of-the-run",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

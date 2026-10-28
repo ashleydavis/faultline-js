@@ -1,0 +1,8 @@
+{
+    "name": "config-unknown-key",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

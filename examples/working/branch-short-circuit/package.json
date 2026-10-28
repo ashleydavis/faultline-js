@@ -1,0 +1,8 @@
+{
+    "name": "branch-short-circuit",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

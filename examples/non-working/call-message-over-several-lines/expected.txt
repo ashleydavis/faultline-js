@@ -1,0 +1,29 @@
+Fault testing the JavaScript and TypeScript source in call-message-over-several-lines.
+
+  Read 1 source file, 2 functions.
+
+-- UNCAUGHT ERROR src/reporting.ts:14:15 -----------------------------------------------------------
+The call to checkLater left an error that no code caught: Error: The check found two problems:
+  the count is missing
+  the name is missing.
+
+  Called with:
+    argument 1: 0
+
+  14 |         throw new Error("The check found two problems:\n  the count is missing\n  the name is missing");
+     |               ^
+
+  Stack trace:
+    at src/reporting.ts:14:15
+    at npx flt
+
+  Hint: Work the call started threw and no code caught it. Await the promise the work returns, or catch the error where the work starts.
+Reproduce it with: npx flt --replay "src/reporting.ts:checkLater;seed=<seed>;values=b0"
+
+  1 call left an error that no code caught, in 1 function.
+
+  Coverage: 3 of 3 code paths, 100%.
+
+  Exercised 3 code paths, 2 functions, 1 file.
+
+  Every failure and every thing to do is in <cache>/report.txt.

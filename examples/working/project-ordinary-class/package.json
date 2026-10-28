@@ -1,0 +1,8 @@
+{
+    "name": "project-ordinary-class",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

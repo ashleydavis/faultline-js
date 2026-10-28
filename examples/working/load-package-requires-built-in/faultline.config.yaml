@@ -1,0 +1,5 @@
+#
+# The package under packages/ is a dependency, not the code this example tests.
+#
+include:
+  - src

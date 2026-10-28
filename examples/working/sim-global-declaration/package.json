@@ -1,0 +1,8 @@
+{
+    "name": "sim-global-declaration",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

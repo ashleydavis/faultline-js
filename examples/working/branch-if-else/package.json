@@ -1,0 +1,8 @@
+{
+    "name": "branch-if-else",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

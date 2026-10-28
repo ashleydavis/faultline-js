@@ -1,0 +1,8 @@
+{
+    "name": "reach-nested-and-private",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

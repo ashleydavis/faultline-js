@@ -1,0 +1,8 @@
+{
+    "name": "runtime-node-too-old",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

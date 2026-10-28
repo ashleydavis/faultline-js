@@ -1,0 +1,8 @@
+{
+    "name": "option-jobs",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

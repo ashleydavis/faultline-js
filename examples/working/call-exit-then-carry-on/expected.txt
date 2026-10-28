@@ -1,0 +1,11 @@
+Fault testing the JavaScript and TypeScript source in call-exit-then-carry-on.
+
+  Read 1 source file, 3 functions.
+
+  No call crashed, hung or found an expectation false.
+
+  Coverage: 7 of 7 code paths, 100%.
+
+  Exercised 7 code paths, 3 functions, 1 file.
+
+  Every failure and every thing to do is in <cache>/report.txt.

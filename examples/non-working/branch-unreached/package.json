@@ -1,0 +1,8 @@
+{
+    "name": "branch-unreached",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

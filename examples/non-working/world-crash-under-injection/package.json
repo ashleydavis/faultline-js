@@ -1,0 +1,8 @@
+{
+    "name": "world-crash-under-injection",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

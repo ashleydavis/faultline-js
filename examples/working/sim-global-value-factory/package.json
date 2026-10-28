@@ -1,0 +1,8 @@
+{
+    "name": "sim-global-value-factory",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

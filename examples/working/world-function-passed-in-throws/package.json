@@ -1,0 +1,8 @@
+{
+    "name": "world-function-passed-in-throws",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

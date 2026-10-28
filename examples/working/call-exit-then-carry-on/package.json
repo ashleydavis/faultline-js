@@ -1,0 +1,8 @@
+{
+    "name": "call-exit-then-carry-on",
+    "private": true,
+    "type": "module",
+    "devDependencies": {
+        "faultline": "file:../../.."
+    }
+}

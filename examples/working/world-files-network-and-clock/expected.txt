@@ -1,0 +1,11 @@
+Fault testing the JavaScript and TypeScript source in world-files-network-and-clock.
+
+  Read 1 source file, 5 functions.
+
+  No call crashed, hung or found an expectation false.
+
+  Coverage: 11 of 11 code paths, 100%.
+
+  Exercised 11 code paths, 5 functions, 1 file.
+
+  Every failure and every thing to do is in <cache>/report.txt.
