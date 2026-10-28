@@ -1,5 +1,5 @@
 Fault testing the JavaScript and TypeScript source in project-bun.
-  Running up to <n> workers at once.
+  Running up to <n> workers at once. Change it with --workers <n>.
 
   Read 2 source files, 4 functions.
 

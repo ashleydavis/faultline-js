@@ -99,8 +99,8 @@ export function failureOf(kind: FailureKind, at: { file: string; name: string })
 
 describe("workersLine", () => {
     test("the most workers a run starts, one worker in the singular", () => {
-        assert.equal(workersLine(1), "  Running up to 1 worker at once.");
-        assert.equal(workersLine(12), "  Running up to 12 workers at once.");
+        assert.equal(workersLine(1), "  Running up to 1 worker at once. Change it with --workers <n>.");
+        assert.equal(workersLine(12), "  Running up to 12 workers at once. Change it with --workers <n>.");
     });
 
     test("a count that is not a whole number above zero is a programmer error", () => {

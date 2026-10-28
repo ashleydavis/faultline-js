@@ -1,5 +1,5 @@
 Fault testing the JavaScript and TypeScript source in world-every-failure-at-every-place.
-  Running up to <n> workers at once.
+  Running up to <n> workers at once. Change it with --workers <n>.
 
   Read 1 source file, 2 functions.
 

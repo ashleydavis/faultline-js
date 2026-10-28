@@ -350,7 +350,7 @@ describe("runProject", () => {
         assert.deepEqual(ran.output.errors, []);
         assert.deepEqual(ran.output.lines, [
             "Fault testing the JavaScript and TypeScript source in project.",
-            "  Running up to 2 workers at once.",
+            "  Running up to 2 workers at once. Change it with --workers <n>.",
             "",
             "  Read 1 source file, 1 function.",
             "",

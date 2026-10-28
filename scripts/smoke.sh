@@ -229,7 +229,7 @@ normalise() {
         -e "s|$REPO_DIR/||g" \
         -e '/^ +Took [0-9hms ]+\.$/d' \
         -e 's/, [0-9]+ calls//' \
-        -e 's/^  Running up to [0-9]+ workers? at once\.$/  Running up to <n> workers at once./' \
+        -e 's/^  Running up to [0-9]+ workers? at once\. /  Running up to <n> workers at once. /' \
         -e 's/seed=[0-9]+/seed=<seed>/g' \
         -e 's|[A-Za-z0-9_./+-]*node_modules/\.cache/faultline/([A-Za-z0-9_.-]+\.txt)|<cache>/\1|g'
 }
