@@ -68,11 +68,6 @@ export interface IEventLoop {
     // Gives the event loop one turn, so the promises and callbacks waiting on it run.
     //
     nextTurn(): Promise<void>;
-
-    //
-    // How many handles and requests the event loop is holding open right now.
-    //
-    openCount(): number;
 }
 
 //
@@ -122,7 +117,6 @@ export async function makeCall(subject: RunSubject, invoke: () => unknown, limit
     assert(limits.afterSettleMs >= 0);
     runWith(subject);
     assert.equal(nowRunning(), subject);
-    const baseline = eventLoop.openCount();
     const outcome: ICallOutcome = {
         state: "pending",
         thrown: undefined,
@@ -149,7 +143,7 @@ export async function makeCall(subject: RunSubject, invoke: () => unknown, limit
         outcome.state = "threw";
         outcome.thrown = error;
     }
-    await waitForCall(subject, outcome, limits, eventLoop, baseline);
+    await waitForCall(subject, outcome, limits, eventLoop);
     assert(outcome.uncaught === watch.uncaught);
     if (outcome.state === "returned") assert.equal(outcome.thrown, undefined);
     withoutRun(() => formatStacks([outcome.thrown, ...outcome.uncaught]));
@@ -173,17 +167,18 @@ export function formatStacks(values: unknown[]): void {
 
 //
 // Runs the event loop and the call's timers until the call has settled and its timers are done or
-// due too far ahead, or until it is clear the call will never settle. Once the call has settled, a
-// repeating timer it left behind runs once more and is not set again.
+// due too far ahead, or until the wall-clock limit passes with the call still waiting, which is a
+// call that never settled. Once the call has settled, a repeating timer it left behind runs once
+// more and is not set again.
 //
-// Every turn either runs a timer, ends the wait or lets real work go on. The wall-clock limit ends
-// the loop whatever the call does, so the loop has an end. Real work is under way when the
-// event loop holds more open than `baseline`, what it held before the call.
+// Every turn either runs a timer, ends the wait or lets the event loop go on. A call still waiting
+// with no timer due is given turns until the wall-clock limit, because work outside the event
+// loop's view, such as Node's thread pool, can still settle it. The wall-clock limit ends the loop
+// whatever the call does, so the loop has an end.
 //
-export async function waitForCall(subject: RunSubject, outcome: ICallOutcome, limits: ICallLimits, eventLoop: IEventLoop, baseline: number): Promise<void> {
+export async function waitForCall(subject: RunSubject, outcome: ICallOutcome, limits: ICallLimits, eventLoop: IEventLoop): Promise<void> {
     assert(limits.wallMs > 0);
     assert(limits.afterSettleMs >= 0);
-    assert(baseline >= 0);
     const startedMs = eventLoop.nowMs();
     let settledStampMs: number | undefined;
     let lastActivity = -1;
@@ -230,9 +225,6 @@ export async function waitForCall(subject: RunSubject, outcome: ICallOutcome, li
             continue;
         }
         if (outcome.state !== "pending") {
-            return;
-        }
-        if (eventLoop.openCount() <= baseline) {
             return;
         }
     }
@@ -316,15 +308,5 @@ export class ProcessEventLoop implements IEventLoop {
         return new Promise((resolve) => {
             setImmediate(resolve);
         });
-    }
-
-    //
-    // Every handle and request the loop reports as open.
-    //
-    openCount(): number {
-        const open = process.getActiveResourcesInfo().length;
-        assert(Number.isInteger(open));
-        assert(open >= 0);
-        return open;
     }
 }

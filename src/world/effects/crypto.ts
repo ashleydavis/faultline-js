@@ -1,8 +1,11 @@
 // What the copy imports in place of `node:crypto`.
 //
 // The random parts are drawn from the run's seeded generator, so a replay draws the same bytes.
-// `randomBytes` given a callback can fail as `docs/FAILURES.md` lists. Hashing, ciphers and the rest
-// are the real thing: they read no randomness and reach nothing outside the process.
+// `randomBytes` given a callback can fail as `docs/FAILURES.md` lists. The work with a callback that
+// Node runs on its thread pool (`scrypt`, `pbkdf2`, `hkdf`, `generateKeyPair`, `generatePrime` and
+// `checkPrime`) is the real thing and can fail as `docs/FAILURES.md` lists, because the callback is
+// where the code reads an error the work met. Hashing, ciphers and the rest are the real thing: they
+// read no randomness and reach nothing outside the process.
 
 import realCrypto from "node:crypto";
 import { nowRunning } from "../current.ts";
@@ -34,6 +37,57 @@ export function randomBytes(size: number, callback?: unknown): Buffer | undefine
     const bytes = Buffer.from(running.rng.bytes(size));
     queueMicrotask(() => done(null, bytes));
     return undefined;
+}
+
+// Hands `name` its arguments with no run in flight, and with a run in flight is a place that can fail
+// instead, passing the callback (the last argument) an `Error`.
+function doWork(name: string, args: unknown[]): void {
+    const real = (realCrypto as unknown as Record<string, (...given: unknown[]) => void>)[name];
+    const running = nowRunning();
+    if (running === undefined) {
+        real(...args);
+        return;
+    }
+    const failure = running.injector.check("crypto-work", ["crypto-work-fails"]);
+    if (failure !== undefined) {
+        const done = args[args.length - 1] as (error: Error) => void;
+        queueMicrotask(() => done(new Error(`The ${name} work failed.`)));
+        return;
+    }
+    real(...args);
+}
+
+export function scrypt(...args: unknown[]): void {
+    doWork("scrypt", args);
+}
+
+export function pbkdf2(...args: unknown[]): void {
+    doWork("pbkdf2", args);
+}
+
+export function hkdf(...args: unknown[]): void {
+    doWork("hkdf", args);
+}
+
+export function generateKeyPair(...args: unknown[]): void {
+    doWork("generateKeyPair", args);
+}
+
+export function generatePrime(...args: unknown[]): void {
+    doWork("generatePrime", args);
+}
+
+export function checkPrime(...args: unknown[]): void {
+    doWork("checkPrime", args);
+}
+
+// Each replacement of the work carries the symbols Node puts on the real function, such as the one
+// that makes `util.promisify(generateKeyPair)` resolve with both keys and not with the first alone.
+for (const [name, replacement] of Object.entries({ scrypt, pbkdf2, hkdf, generateKeyPair, generatePrime, checkPrime })) {
+    const real = (realCrypto as unknown as Record<string, object>)[name];
+    for (const symbol of Object.getOwnPropertySymbols(real)) {
+        Object.defineProperty(replacement, symbol, Object.getOwnPropertyDescriptor(real, symbol)!);
+    }
 }
 
 export function randomUUID(): string {
@@ -96,4 +150,10 @@ export default {
     getRandomValues,
     randomFillSync,
     randomFill,
+    scrypt,
+    pbkdf2,
+    hkdf,
+    generateKeyPair,
+    generatePrime,
+    checkPrime,
 };

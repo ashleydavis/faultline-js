@@ -13,7 +13,7 @@ import { describe, jest, test } from "@jest/globals";
 import { runWith } from "../current.ts";
 import type { PlannedFailure } from "../injector.ts";
 import { RunSubject } from "../subject.ts";
-import crypto, { getRandomValues, randomBytes, randomFill, randomFillSync, randomInt, randomUUID } from "./crypto.ts";
+import crypto, { checkPrime, generateKeyPair, generatePrime, getRandomValues, hkdf, pbkdf2, randomBytes, randomFill, randomFillSync, randomInt, randomUUID, scrypt } from "./crypto.ts";
 
 // The real module with every random call replaced by a stand-in that answers with a value naming
 // itself.
@@ -25,6 +25,18 @@ jest.mock("node:crypto", () => ({
     getRandomValues: jest.fn(() => "real getRandomValues"),
     randomFillSync: jest.fn(() => "real randomFillSync"),
     randomFill: jest.fn(() => "real randomFill"),
+    scrypt: jest.fn(() => "real scrypt"),
+    pbkdf2: jest.fn(() => "real pbkdf2"),
+    hkdf: jest.fn(() => "real hkdf"),
+    generateKeyPair: Object.defineProperties(
+        jest.fn(() => "real generateKeyPair"),
+        Object.fromEntries(Object.getOwnPropertySymbols(jest.requireActual<typeof realCrypto>("node:crypto").generateKeyPair).map((symbol) => [
+            symbol,
+            Object.getOwnPropertyDescriptor(jest.requireActual<typeof realCrypto>("node:crypto").generateKeyPair, symbol)!,
+        ])),
+    ),
+    generatePrime: jest.fn(() => "real generatePrime"),
+    checkPrime: jest.fn(() => "real checkPrime"),
 }));
 
 // The stand-ins above, as the test reads them back.
@@ -139,6 +151,63 @@ describe("with a run in flight", () => {
         });
         assert.ok(error instanceof Error);
         assert.equal(error.message, "No entropy is available to draw random bytes from.");
+    });
+});
+
+describe("work on the thread pool", () => {
+    // Each function of the work, by the name the real module has it under.
+    const work: [string, (...args: unknown[]) => void][] = [
+        ["scrypt", scrypt],
+        ["pbkdf2", pbkdf2],
+        ["hkdf", hkdf],
+        ["generateKeyPair", generateKeyPair],
+        ["generatePrime", generatePrime],
+        ["checkPrime", checkPrime],
+    ];
+
+    test("with a run in flight each is a place, hands the real call its arguments and can fail", async () => {
+        for (const [name, call] of work) {
+            const reached = await runInFlight((subject) => {
+                call("argument", ignoreAnswer);
+                return Promise.resolve(subject.injector.reached);
+            }, undefined);
+            assert.deepEqual(lastCall(name), ["argument", ignoreAnswer]);
+            assert.deepEqual(reached, [
+                {
+                    place: {
+                        effect: "crypto-work",
+                        occurrence: 0,
+                    },
+                    failures: ["crypto-work-fails"],
+                },
+            ]);
+            const [error] = await runInFlight(() => new Promise<unknown[]>((settle) => {
+                call("argument", (...given: unknown[]) => settle(given));
+            }), {
+                place: {
+                    effect: "crypto-work",
+                    occurrence: 0,
+                },
+                failure: "crypto-work-fails",
+            });
+            assert.ok(error instanceof Error);
+            assert.equal(error.message, `The ${name} work failed.`);
+        }
+    });
+
+    test("each carries the symbols of the real function, so util.promisify of generateKeyPair names both keys", () => {
+        for (const [name, call] of work) {
+            assert.deepEqual(Object.getOwnPropertySymbols(call).map(String), Object.getOwnPropertySymbols(realModule[name]).map(String));
+        }
+        assert.ok(Object.getOwnPropertySymbols(generateKeyPair).map(String).includes("Symbol(customPromisifyArgs)"));
+    });
+
+    test("with no run in flight each is handed to the real module with its arguments and is in the default export", () => {
+        for (const [name, call] of work) {
+            call("argument", ignoreAnswer);
+            assert.deepEqual(lastCall(name), ["argument", ignoreAnswer]);
+            assert.equal((crypto as unknown as Record<string, unknown>)[name], call);
+        }
     });
 });
 

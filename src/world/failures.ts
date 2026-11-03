@@ -26,6 +26,7 @@ export type Effect =
     | "attributes"
     | "file-state"
     | "random"
+    | "crypto-work"
     | "current-directory"
     | "machine"
     | "function-passed-in";
@@ -270,6 +271,13 @@ export const failureGroups: FailureGroup[] = [
         heading: "Secure random numbers",
         kinds: [
             { id: "no-entropy-available", description: "No entropy available", outcome: "`crypto.randomBytes` with a callback passes it an `Error`" },
+        ],
+    },
+    {
+        effect: "crypto-work",
+        heading: "Cryptographic work",
+        kinds: [
+            { id: "crypto-work-fails", description: "The work fails", outcome: "`crypto.scrypt`, `crypto.pbkdf2`, `crypto.hkdf`, `crypto.generateKeyPair`, `crypto.generatePrime` and `crypto.checkPrime` pass their callback an `Error`" },
         ],
     },
     {

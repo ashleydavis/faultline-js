@@ -1,8 +1,8 @@
 # Failure types Faultline injects
 
-These are the failures Faultline injects, grouped by what the function is using: files, directories, the network, the clock, random numbers, output, other programs, environment variables and functions passed in. Each failure lists what the failing call does to your code. Every time Faultline calls a function, it notes each call inside it that can fail. For each of those calls and each failure that applies to it, Faultline calls the function again with only that one failure injected. These calls can reach new calls that can fail and Faultline does the same for them.
+These are the failures Faultline injects, grouped by what the function is using: files, directories, the network, the clock, random numbers, cryptographic work, output, other programs, environment variables and functions passed in. Each failure lists what the failing call does to your code. Every time Faultline calls a function, it notes each call inside it that can fail. For each of those calls and each failure that applies to it, Faultline calls the function again with only that one failure injected. These calls can reach new calls that can fail and Faultline does the same for them.
 
-Faultline replaces these with simulated ones for every file it loads, your packages in `node_modules` included: the modules `node:fs`, `node:fs/promises`, `node:dns`, `node:dns/promises`, `node:http`, `node:https`, `node:net`, `node:child_process`, `node:os` and the random parts of `node:crypto`, and `fetch`, `Date`, `performance.now`, `Math.random`, `crypto.randomUUID`, `crypto.getRandomValues`, the timers, `process.env`, `process.argv`, `process.exit`, `process.stdin`, `process.stdout`, `process.stderr` and `console`.
+Faultline replaces these with simulated ones for every file it loads, your packages in `node_modules` included: the modules `node:fs`, `node:fs/promises`, `node:dns`, `node:dns/promises`, `node:http`, `node:https`, `node:net`, `node:child_process`, `node:os` and the random parts and the callback forms of the work on Node's thread pool of `node:crypto`, and `fetch`, `Date`, `performance.now`, `Math.random`, `crypto.randomUUID`, `crypto.getRandomValues`, the timers, `process.env`, `process.argv`, `process.exit`, `process.stdin`, `process.stdout`, `process.stderr` and `console`.
 
 Each call has its own `process.argv`: it starts as the process's, and a change one call makes is not seen by the next. `process.exitCode` is cleared at the start of every call, as it starts unset in a new process, and `process.exit()` with no code ends with the code `process.exitCode` holds.
 
@@ -221,6 +221,12 @@ An interruption reaches a function as an aborted operation.
 | Failure | What the call does |
 | --- | --- |
 | No entropy available | `crypto.randomBytes` with a callback passes it an `Error` |
+
+## Cryptographic work
+
+| Failure | What the call does |
+| --- | --- |
+| The work fails | `crypto.scrypt`, `crypto.pbkdf2`, `crypto.hkdf`, `crypto.generateKeyPair`, `crypto.generatePrime` and `crypto.checkPrime` pass their callback an `Error` |
 
 ## Current directory
 

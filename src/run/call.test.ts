@@ -37,28 +37,21 @@ export interface IFakeEventLoop extends IEventLoop {
     // The turns given so far.
     //
     turns: number;
-
-    //
-    // What the real work count reads.
-    //
-    work: number;
 }
 
 //
-// An event loop whose wall clock starts at 0 and moves on `turnStepMs` each turn, whose turns let
-// the waiting promises run and whose real work reads `work`.
+// An event loop whose wall clock starts at 0 and moves on `turnStepMs` each turn and whose turns let
+// the waiting promises run.
 //
-export function createFakeEventLoop(work: number): IFakeEventLoop {
+export function createFakeEventLoop(): IFakeEventLoop {
     const loop: IFakeEventLoop = {
         turns: 0,
-        work,
         nowMs: () => loop.turns * turnStepMs,
         async nextTurn(): Promise<void> {
             loop.turns += 1;
             await Promise.resolve();
             await Promise.resolve();
         },
-        openCount: () => loop.work,
     };
     return loop;
 }
@@ -66,7 +59,7 @@ export function createFakeEventLoop(work: number): IFakeEventLoop {
 //
 // A process with no real work under way.
 //
-const idle: IEventLoop = createFakeEventLoop(0);
+const idle: IEventLoop = createFakeEventLoop();
 
 //
 // A watch that has seen no error no code caught. Each call gets its own, because a call adds to
@@ -113,38 +106,33 @@ describe("makeCall", () => {
         assert.equal(rejected.thrown.message, "late");
     });
 
-    test("a call waiting on a promise no timer and no real work can settle never settles and that is known at once", async () => {
-        const loop = createFakeEventLoop(0);
-        const outcome = await makeCall(new RunSubject(1, undefined), () => new Promise(() => undefined), {
-            ...limits,
-            wallMs: 60000,
-        }, loop, {
-            uncaught: [],
-        });
-        assert.equal(outcome.state, "pending");
-        assert.equal(loop.turns, 1);
-    });
-
-    test("a call waiting while real work is under way is waited for until the wall-clock limit", async () => {
-        const loop = createFakeEventLoop(0);
-        const outcome = await makeCall(new RunSubject(1, undefined), () => {
-            loop.work = 1;
-            return new Promise(() => undefined);
-        }, limits, loop, emptyWatch());
+    test("a call waiting on a promise that never settles is waited for until the wall-clock limit and stays pending", async () => {
+        const loop = createFakeEventLoop();
+        const outcome = await makeCall(new RunSubject(1, undefined), () => new Promise(() => undefined), limits, loop, emptyWatch());
         assert.equal(outcome.state, "pending");
         assert.equal(loop.turns, limits.wallMs / turnStepMs + 1);
     });
 
-    test("work the event loop held before the call does not keep the call waiting", async () => {
-        const loop = createFakeEventLoop(3);
-        const outcome = await makeCall(new RunSubject(1, undefined), () => new Promise(() => undefined), limits, loop, emptyWatch());
-        assert.equal(outcome.state, "pending");
-        assert.equal(loop.turns, 1);
+    test("a call waiting on work that settles it after several turns with no timer due has returned", async () => {
+        const loop = createFakeEventLoop();
+        let settle: (value: string) => void = () => undefined;
+        const turn = loop.nextTurn;
+        loop.nextTurn = async (): Promise<void> => {
+            await turn();
+            if (loop.turns === 3) {
+                settle("done");
+            }
+        };
+        const outcome = await makeCall(new RunSubject(1, undefined), () => new Promise((resolve) => {
+            settle = resolve;
+        }), limits, loop, emptyWatch());
+        assert.equal(outcome.state, "returned");
+        assert.equal(loop.turns, 3);
     });
 
     test("while a request to a server of the run is under way the call's timers wait, so the server answers before a timeout runs out", async () => {
         const subject = new RunSubject(1, undefined);
-        const loop = createFakeEventLoop(0);
+        const loop = createFakeEventLoop();
         const settled: string[] = [];
         const outcome = await makeCall(subject, () => new Promise<void>((resolve) => {
             subject.clock.setTimer(5000, () => {
@@ -175,7 +163,7 @@ describe("makeCall", () => {
 
     test("an exchange that keeps carrying bytes holds the timers back for as long as it moves", async () => {
         const subject = new RunSubject(1, undefined);
-        const loop = createFakeEventLoop(0);
+        const loop = createFakeEventLoop();
         const settled: string[] = [];
         let turns = 0;
         const outcome = await makeCall(subject, () => new Promise<void>((resolve) => {
@@ -205,7 +193,7 @@ describe("makeCall", () => {
 
     test("an exchange that carries nothing for a few turns has gone quiet, and the timers run so its timeout runs out", async () => {
         const subject = new RunSubject(1, undefined);
-        const loop = createFakeEventLoop(0);
+        const loop = createFakeEventLoop();
         const settled: string[] = [];
         const outcome = await makeCall(subject, () => new Promise<void>((resolve) => {
             subject.clock.setTimer(5000, () => {
@@ -331,9 +319,8 @@ describe("the parts", () => {
         assert.equal(bare.stack, undefined);
     });
 
-    test("the process's real work is what the event loop holds open and its clock is the real one", () => {
+    test("the process's event loop clock is the real one", () => {
         const loop = new ProcessEventLoop();
-        assert.equal(loop.openCount(), process.getActiveResourcesInfo().length);
         const before = Date.now();
         const read = loop.nowMs();
         assert.ok(read >= before);

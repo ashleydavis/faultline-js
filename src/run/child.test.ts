@@ -295,13 +295,6 @@ export class FakeEventLoop implements IEventLoop {
             setImmediate(resolve);
         });
     }
-
-    //
-    // No real work is ever open, so a call that waits on no timer is known never to settle.
-    //
-    openCount(): number {
-        return 0;
-    }
 }
 
 //
