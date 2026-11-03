@@ -8,7 +8,7 @@ import path from "node:path";
 import type { Walked } from "../discover/sources.ts";
 import { listShards } from "../run/driver.ts";
 import type { IOpenRequest } from "../run/messages.ts";
-import { createWorker, defaultWorkerSettings, WorkerFactory, type IWorker } from "../run/worker.ts";
+import { callWallMs, createWorker, defaultWorkerSettings, openLimitMs, WorkerFactory, type IWorker } from "../run/worker.ts";
 
 //
 // The directory Faultline's own modules sit in: `src` in this clone, because a check runs the
@@ -21,7 +21,10 @@ export const toolModules = path.resolve(import.meta.dirname, "..");
 //
 export function startCheckWorker(root: string): IWorker {
     assert(path.isAbsolute(root), `${root} is not an absolute path.`);
-    const settings = defaultWorkerSettings(root, toolModules, path.join(toolModules, "run", "child-main.ts"));
+    const settings = defaultWorkerSettings(root, toolModules, path.join(toolModules, "run", "child-main.ts"), {
+        openLimitMs,
+        callLimitMs: callWallMs,
+    });
     assert.equal(settings.child.projectRoot, root);
     return createWorker(settings, new WorkerFactory());
 }

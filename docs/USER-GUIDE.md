@@ -105,6 +105,7 @@ Type these after `npx flt` on the command line, for example `npx flt --file src/
 - `--full-report` prints a block for every source file with a line for every function: whether all its code paths were exercised, how many and how many calls were made. Without it the run prints the totals and the checklist only.
 - `--no-cache` executes every file and keeps no results (see below).
 - The environment variable `FAULTLINE_OPEN_LIMIT_MS` sets how long, in milliseconds, opening a file may take before Faultline reports its top level as a call that never returned. It is 30000 when not set. Any value that is not a whole number from 1 up is refused with a sentence and exit 1.
+- The environment variable `FAULTLINE_CALL_LIMIT_MS` sets how long, in milliseconds, a call may wait before Faultline reports it as a call that never returned. It is 10000 when not set. Any value that is not a whole number from 1 up is refused with a sentence and exit 1.
 
 ## Step 4: Run Faultline
 

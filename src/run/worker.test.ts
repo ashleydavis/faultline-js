@@ -18,7 +18,7 @@ import { fork } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globals";
 import type { ICalledReply, ICallRequest, ICallResult, IOpenedReply, IOpenRequest, IReadReply, IReply, IRequest, IShardFacts } from "./messages.ts";
-import { afterSettleMs, callsPerChildMost, callsPerReadingMost, callWallMs, createWorker, defaultWorkerSettings, deliverAnswer, endedBecause, failedCall, failedOpenCall, isCalledReply, killAfterMs, killChild, openLimitMs, startChild, stopChild, WorkerFactory, type IChildProcess, type IWorkerFactory, type IWorkerSettings, type IWorkerState } from "./worker.ts";
+import { afterSettleMs, callsPerChildMost, callsPerReadingMost, callWallMs, createWorker, defaultWorkerSettings, deliverAnswer, endedBecause, failedCall, failedOpenCall, isCalledReply, killChild, openLimitMs, startChild, stopChild, WorkerFactory, type IChildProcess, type IWorkerFactory, type IWorkerSettings, type IWorkerState } from "./worker.ts";
 
 //
 // `fork` hands back a stand-in for the child, with the error stream the worker requires, so no
@@ -695,8 +695,21 @@ describe("the parts", () => {
         assert.equal(isCalledReply(opened), false);
     });
 
+    test("a run's workers wait the limits they are given, and a child that never answers a call is killed after twice the call limit", () => {
+        const settings = defaultWorkerSettings("/project", "/tool/dist", "/tool/dist/run/child-main.js", {
+            openLimitMs: 5000,
+            callLimitMs: 1000,
+        });
+        assert.equal(settings.openLimitMs, 5000);
+        assert.equal(settings.child.limits.wallMs, 1000);
+        assert.equal(settings.killAfterMs, 2000);
+    });
+
     test("a run's workers start with the limits Faultline sets and the sim types where its own modules declare them", () => {
-        const settings = defaultWorkerSettings("/project", "/tool/dist", "/tool/dist/run/child-main.js");
+        const settings = defaultWorkerSettings("/project", "/tool/dist", "/tool/dist/run/child-main.js", {
+            openLimitMs,
+            callLimitMs: callWallMs,
+        });
         assert.equal(settings.nodePath, process.execPath);
         assert.equal(settings.childEntry, "/tool/dist/run/child-main.js");
         assert.deepEqual(settings.child.simTypes, ["/tool/dist/sim/index.ts", "/tool/dist/sim/index.d.ts"]);
@@ -704,7 +717,7 @@ describe("the parts", () => {
             wallMs: callWallMs,
             afterSettleMs,
         });
-        assert.equal(settings.killAfterMs, killAfterMs);
+        assert.equal(settings.killAfterMs, callWallMs * 2);
         assert.ok(settings.killAfterMs > settings.child.limits.wallMs);
         assert.equal(settings.openLimitMs, openLimitMs);
         assert.equal(settings.callsPerChild, callsPerChildMost);

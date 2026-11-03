@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { afterEach, describe, jest, test } from "@jest/globals";
 import { createFakeFileSystem, type IFakeFileSystem } from "./lib/fake-files.test.ts";
-import { createProjectWorker, main, processEnvironment, readOpenLimitMs, readToolVersion, toolModulesOf } from "./main.ts";
+import { createProjectWorker, main, processEnvironment, readLimitMs, readToolVersion, toolModulesOf } from "./main.ts";
 import { ConsoleOutput } from "./report/output.ts";
 import { openLimitMs, type IChildProcess, type IErrorStream, type IWorkerFactory, type IWorkerSettings } from "./run/worker.ts";
 
@@ -185,6 +185,21 @@ describe("main", () => {
         }
     });
 
+    test("a call limit that is not a whole number of milliseconds is refused in one sentence and the process exits 1", async () => {
+        runAs("24.22.0", undefined);
+        process.env["FAULTLINE_CALL_LIMIT_MS"] = "soon";
+        try {
+            const factory = new KeptFactory();
+            const written = await runFlt([], factory);
+            assert.equal(process.exitCode, 1);
+            assert.deepEqual(written, ["FAULTLINE_CALL_LIMIT_MS is \"soon\", and it takes a whole number of milliseconds from 1 up.\n"]);
+            assert.equal(factory.settings.length, 0);
+        }
+        finally {
+            delete process.env["FAULTLINE_CALL_LIMIT_MS"];
+        }
+    });
+
     test("Bun is refused whatever Node version it reports", async () => {
         runAs("24.22.0", "1.4.3");
         const written = await runFlt([], new KeptFactory());
@@ -212,6 +227,7 @@ describe("createProjectWorker", () => {
             entryUrl,
             projectRoot: "/project",
             openLimitMs: 5000,
+            callLimitMs: 1000,
         });
         const facts = await worker.open({
             kind: "open",
@@ -228,6 +244,8 @@ describe("createProjectWorker", () => {
         assert.equal(started.child.toolModules, "/tool/src");
         assert.equal(started.child.projectRoot, "/project");
         assert.equal(started.openLimitMs, 5000);
+        assert.equal(started.child.limits.wallMs, 1000);
+        assert.equal(started.killAfterMs, 2000);
     });
 
     test("a project given by a relative path is a mistake in the caller", () => {
@@ -235,20 +253,22 @@ describe("createProjectWorker", () => {
             entryUrl,
             projectRoot: "project",
             openLimitMs: 5000,
+            callLimitMs: 1000,
         }));
     });
 });
 
-describe("readOpenLimitMs", () => {
-    test("with no variable set, a file may take Faultline's own limit to open", () => {
-        assert.equal(readOpenLimitMs(undefined), openLimitMs);
+describe("readLimitMs", () => {
+    test("with no variable set, the limit is the one given for that case", () => {
+        assert.equal(readLimitMs(undefined, openLimitMs), openLimitMs);
+        assert.equal(readLimitMs(undefined, 10000), 10000);
     });
 
     test("a whole number of milliseconds from 1 up is the limit, and anything else is refused", () => {
-        assert.equal(readOpenLimitMs("5000"), 5000);
-        assert.equal(readOpenLimitMs("1"), 1);
+        assert.equal(readLimitMs("5000", openLimitMs), 5000);
+        assert.equal(readLimitMs("1", openLimitMs), 1);
         for (const variable of ["", "0", "-5", "1.5", "five", "05", "99999999999999999999"]) {
-            assert.equal(readOpenLimitMs(variable), undefined);
+            assert.equal(readLimitMs(variable, openLimitMs), undefined);
         }
     });
 });
@@ -277,7 +297,10 @@ describe("processEnvironment", () => {
     test("a command works in the current directory with Faultline's version from its package.json, the process's own streams, a seed a token can carry and workers for that project", async () => {
         jest.spyOn(process, "cwd").mockReturnValue("/project");
         const factory = new KeptFactory();
-        const environment = await processEnvironment(entryUrl, toolFiles(), factory, 5000);
+        const environment = await processEnvironment(entryUrl, toolFiles(), factory, {
+            openLimitMs: 5000,
+            callLimitMs: 1000,
+        });
         assert.equal(environment.projectRoot, "/project");
         assert.equal(environment.toolModules, "/tool/src");
         assert.equal(environment.faultlineVersion, "0.1.0");
@@ -297,5 +320,6 @@ describe("processEnvironment", () => {
         await worker.stop();
         assert.equal(factory.settings[0]?.child.projectRoot, "/project");
         assert.equal(factory.settings[0]?.openLimitMs, 5000);
+        assert.equal(factory.settings[0]?.child.limits.wallMs, 1000);
     });
 });

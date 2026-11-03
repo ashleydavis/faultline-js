@@ -46,13 +46,6 @@ export const callWallMs = 10000;
 export const afterSettleMs = 60000;
 
 //
-// How long the worker waits for the child to answer a call before it kills it: twice the child's
-// own limit, so a call that is waiting is answered by the child when its limit passes, and only a
-// call that never gives the child back control (a loop that never ends) is killed.
-//
-export const killAfterMs = callWallMs * 2;
-
-//
 // How long opening a shard may take: reading it and every file it imports with the compiler and
 // loading it. The slowest open measured on 2026-10-26, over every file of a real project of 135
 // source files run with two workers, took 9.9 seconds. Three times that leaves room for a slower
@@ -84,13 +77,34 @@ export const callsPerChildMost = 1000;
 export const callsPerReadingMost = 8;
 
 //
-// The settings a run starts every worker with: the Node running Faultline, the limits above and
-// the sim types where Faultline's own modules declare them, as TypeScript in a clone and as
-// declarations in an installed copy.
+// How long a run's workers wait, in milliseconds: on opening a file and on a call. A run takes them
+// from the environment it was started in, and Faultline's own are `openLimitMs` and `callWallMs`.
 //
-export function defaultWorkerSettings(projectRoot: string, toolModules: string, childEntry: string): IWorkerSettings {
+export interface IWorkerLimits {
+    //
+    // How long opening a file may take.
+    //
+    openLimitMs: number;
+
+    //
+    // How long a call may wait before it is taken never to settle.
+    //
+    callLimitMs: number;
+}
+
+//
+// The settings a run starts every worker with: the Node running Faultline, `limits`, the other
+// limits above and the sim types where Faultline's own modules declare them, as TypeScript in a
+// clone and as declarations in an installed copy. The worker kills a child that has not answered
+// a call after twice the call limit, so a call that is waiting is answered by the child when its
+// limit passes, and only a call that never gives the child back control (a loop that never ends) is
+// killed.
+//
+export function defaultWorkerSettings(projectRoot: string, toolModules: string, childEntry: string, limits: IWorkerLimits): IWorkerSettings {
     assert(path.isAbsolute(projectRoot));
     assert(path.isAbsolute(childEntry));
+    assert(limits.openLimitMs > 0);
+    assert(limits.callLimitMs > 0);
     return {
         nodePath: process.execPath,
         childEntry,
@@ -99,12 +113,12 @@ export function defaultWorkerSettings(projectRoot: string, toolModules: string, 
             toolModules,
             simTypes: [path.join(toolModules, "sim", "index.ts"), path.join(toolModules, "sim", "index.d.ts")],
             limits: {
-                wallMs: callWallMs,
+                wallMs: limits.callLimitMs,
                 afterSettleMs,
             },
         },
-        killAfterMs,
-        openLimitMs,
+        killAfterMs: limits.callLimitMs * 2,
+        openLimitMs: limits.openLimitMs,
         callsPerChild: callsPerChildMost,
         callsPerReading: callsPerReadingMost,
     };
