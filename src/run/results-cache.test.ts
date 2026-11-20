@@ -36,6 +36,7 @@ export function resultOf(file: string, exercised: string[]): IShardResult {
             uncallable: [],
             simProblems: [],
             loadProblem: undefined,
+            isOpenFailed: false,
         },
         tallies: [{
             name: "f",

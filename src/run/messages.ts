@@ -297,6 +297,13 @@ export interface IShardFacts {
     // level could be called, or undefined when it loaded.
     //
     loadProblem: string | undefined;
+
+    //
+    // Whether the child process failed to open the shard, because it ended or the open ran past
+    // its limit. That failure comes from how busy the machine was as much as from the code, so the
+    // run keeps no result of the shard in the results cache and the next run opens it again.
+    //
+    isOpenFailed: boolean;
 }
 
 //

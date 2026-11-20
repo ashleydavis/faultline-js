@@ -1355,6 +1355,7 @@ describe("emptyFacts", () => {
             uncallable: [],
             simProblems: ["a problem"],
             loadProblem: "it failed",
+            isOpenFailed: false,
         });
         assert.throws(() => emptyFacts("", [], undefined));
         assert.throws(() => emptyFacts(path.join(projectRoot, "src/served.ts"), [], undefined), /not a path relative to the project root/);

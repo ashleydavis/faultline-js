@@ -76,6 +76,7 @@ export function shardOf(file: string, functions: IFunctionPlan[], paths: IPathRe
             uncallable: [],
             simProblems: [],
             loadProblem: undefined,
+            isOpenFailed: false,
         },
         tallies: [],
         exercised: [],

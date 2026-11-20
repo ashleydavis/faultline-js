@@ -71,6 +71,7 @@ export function shardOf(functions: IFunctionPlan[], scenarios: string[]): IShard
         uncallable: [],
         simProblems: [],
         loadProblem: undefined,
+        isOpenFailed: false,
     };
 }
 

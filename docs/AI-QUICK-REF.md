@@ -59,7 +59,7 @@ Faultline exits 1 below 100% coverage and 0 at 100%.
 
 Run `npx flt` with the rest of your checks, in your pre-commit hook and in CI, so a change that leaves a code path unexercised or brings back a crash is refused. CI needs Node 24 or later on the runner, set up the same way as on your machine.
 
-Faultline keeps each file's result in `node_modules/.cache/faultline/` and does not execute again code that is unchanged since the run that proved it. The report says which files' results came from the cache. `npx flt --no-cache` executes every file, and `npx flt clear` throws the kept results and the compiled files away. A file that has not changed is not compiled again, even with `--no-cache`.
+Faultline keeps each file's result in `node_modules/.cache/faultline/` and does not execute again code that is unchanged since the run that proved it. The report says which files' results came from the cache. `npx flt --no-cache` executes every file and keeps what it found in place of the kept results, and `npx flt clear` throws the kept results and the compiled files away. A file that failed to open within the open limit, or whose process ended while opening it, has no result kept, so the next run opens it again. A file that has not changed is not compiled again, even with `--no-cache`.
 
 `npx flt --full-report` also prints a line for every function of every file.
 

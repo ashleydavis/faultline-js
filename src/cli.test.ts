@@ -93,6 +93,7 @@ export function passingWorker(made: string[]): IWorker {
             uncallable: [],
             simProblems: [],
             loadProblem: undefined,
+            isOpenFailed: false,
         }),
         read: async (): Promise<string[]> => [],
         call: async (token: string): Promise<ICallResult> => ({

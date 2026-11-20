@@ -83,6 +83,7 @@ export function crashingWorker(log: IWorkerLog, uncallable: string | undefined):
                 uncallable: [],
                 simProblems: [],
                 loadProblem: undefined,
+                isOpenFailed: false,
             };
         },
         read: async (): Promise<string[]> => [],
@@ -237,6 +238,7 @@ const facts: IShardFacts = {
     uncallable: [],
     simProblems: [],
     loadProblem: undefined,
+    isOpenFailed: false,
 };
 
 //

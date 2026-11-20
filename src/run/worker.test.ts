@@ -259,6 +259,7 @@ export function factsOf(file: string): IShardFacts {
         uncallable: [],
         simProblems: [],
         loadProblem: undefined,
+        isOpenFailed: false,
     };
 }
 
@@ -566,6 +567,7 @@ describe("a worker over fake children", () => {
         const worker = createWorker(settingsWith(1000, 1000), factoryOf(started));
         const facts = await worker.open(openOf("src/ends.ts"));
         assert.equal(facts.loadProblem, "The child process opening src/ends.ts ended with the signal SIGKILL.");
+        assert.equal(facts.isOpenFailed, true);
         assert.deepEqual(facts.functions.map((one) => [one.name, one.targets]), [["(top level)", ["src/ends.ts\t(top level):entered"]]]);
         const call = await worker.call("src/ends.ts:(top level);seed=5");
         assert.deepEqual(call.failures.map((one) => [one.kind, one.message, one.key]), [["crash", "The call to (top level) was not made, because the child process opening src/ends.ts ended with the signal SIGKILL.", "open|src/ends.ts"]]);
@@ -588,6 +590,7 @@ describe("a worker over fake children", () => {
         const worker = createWorker(settingsWith(5, 1000), factoryOf(started));
         const facts = await settle(worker.open(openOf("src/slow.ts")));
         assert.equal(facts.loadProblem, "The child process opening src/slow.ts did not finish within 5 milliseconds.");
+        assert.equal(facts.isOpenFailed, true);
         assert.equal(facts.functions.length, 1);
         const top = await settle(worker.call("src/slow.ts:(top level);seed=5"));
         assert.deepEqual(top.failures.map((one) => [one.kind, one.message]), [["hang", "The call to (top level) never returned."]]);

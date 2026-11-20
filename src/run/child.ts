@@ -447,6 +447,7 @@ export function emptyFacts(file: string, simProblems: string[], loadProblem: str
         uncallable: [],
         simProblems,
         loadProblem,
+        isOpenFailed: false,
     };
 }
 

@@ -531,7 +531,8 @@ export function killChild(state: IWorkerState): void {
 // Opens a shard in the child, starting one when none is running. A child that cannot open it is
 // gone by the time the answer comes (it ended or it was killed when the limit passed), and the
 // shard is described with only its top level, so the call that loads the file is reported with its
-// replay token, answered from how the open failed rather than by opening the file again.
+// replay token, answered from how the open failed rather than by opening the file again. The facts
+// are marked as failed to open, so the run keeps no result of the shard in the results cache.
 //
 export async function openShard(state: IWorkerState, request: IOpenRequest): Promise<IShardFacts> {
     state.shard = request;
@@ -562,6 +563,7 @@ export async function openShard(state: IWorkerState, request: IOpenRequest): Pro
         reason = `ended ${answer.ended}`;
     }
     const facts = emptyFacts(request.file, [], `The child process opening ${request.file} ${reason}.`);
+    facts.isOpenFailed = true;
     if (!isSimFile(request.file)) {
         facts.functions.push({
             label: topLevelLabel,

@@ -453,9 +453,37 @@ run_one() {
         return
     fi
     if ! printf '%s\n' "${arguments[@]+"${arguments[@]}"}" | grep -qx -e '--file' -e '--function'; then
-        if ! grep -q '^  Cached ' "$output.cached.raw"; then
-            refuse "$slug" "the second run printed no line saying it read the cache, so the cache was not used."
-            return
+        # A file the child process failed to open, because the open ran past its limit or the child
+        # ended, failed because of how busy the machine was as much as because of its code, so no
+        # result of it is kept and every run opens it again. A kept result is named by the first 32
+        # hex digits of the SHA-256 of the file's path.
+        local results_directory="$directory/node_modules/.cache/faultline/results"
+        local failed_opens
+        failed_opens="$(sed -nE 's/^  The child process opening (.+) (did not finish within [0-9]+ milliseconds|ended .*)\.$/\1/p' "$output")"
+        local failed_open
+        while IFS= read -r failed_open; do
+            if [ -z "$failed_open" ]; then
+                continue
+            fi
+            if [ -e "$results_directory/$(printf '%s' "$failed_open" | sha256sum | cut -c1-32).json" ]; then
+                refuse "$slug" "the run kept the result of $failed_open, which failed to open, so later runs would report the failure without opening the file again."
+                return
+            fi
+        done <<< "$failed_opens"
+
+        # A run reads the cache whenever it kept a result. A run whose every file failed to open
+        # kept none, so the second run opened them all again and read nothing from the cache.
+        local is_cache_read=true
+        if [ -z "$(ls -A "$results_directory" 2>/dev/null)" ]; then
+            if [ -n "$failed_opens" ]; then
+                is_cache_read=false
+            fi
+        fi
+        if [ "$is_cache_read" = true ]; then
+            if ! grep -q '^  Cached ' "$output.cached.raw"; then
+                refuse "$slug" "the second run printed no line saying it read the cache, so the cache was not used."
+                return
+            fi
         fi
 
         # The run above kept the crashes it read from the cache. Every one of them is of a file

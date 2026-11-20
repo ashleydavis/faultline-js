@@ -112,6 +112,7 @@ describe("reportFileText", () => {
                     uncallable: [],
                     simProblems: [],
                     loadProblem: undefined,
+                    isOpenFailed: false,
                 },
                 tallies: [],
                 exercised: [],

@@ -100,6 +100,7 @@ export function scriptedWorker(log: string[]): IWorker {
                 uncallable: [],
                 simProblems: [],
                 loadProblem: undefined,
+                isOpenFailed: false,
             };
         },
         read: async (): Promise<string[]> => [],
@@ -143,6 +144,7 @@ export function shardResultOf(file: string, exercised: string[], token: string):
             uncallable: [],
             simProblems: [],
             loadProblem: undefined,
+            isOpenFailed: false,
         },
         tallies: [],
         exercised,

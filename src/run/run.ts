@@ -118,12 +118,12 @@ export interface IRunEnvironment {
 //
 export interface ICachePlan {
     //
-    // Whether the cache is used at all.
+    // Whether the run writes what it found to the cache.
     //
-    isUsed: boolean;
+    isKept: boolean;
 
     //
-    // Each shard's key, by its file. Empty when the cache is not used.
+    // Each shard's key, by its file. Empty when the run keeps nothing.
     //
     keys: Map<string, string>;
 
@@ -135,7 +135,7 @@ export interface ICachePlan {
 
     //
     // The kept answers of every shard whose stored result has the key the shard has now, whether or
-    // not that result can be used as it is, by token. Empty when the cache is not used.
+    // not that result can be used as it is, by token. Empty when the run reads no stored result.
     //
     answers: Map<string, ICallAnswer>;
 }
@@ -195,7 +195,10 @@ export async function runProject(environment: IRunEnvironment, options: IOptions
         output.printError(kept.error);
         return 1;
     }
-    const plan = await planCache(environment, shards, isCacheUsed(options));
+    const plan = await planCache(environment, shards, {
+        isRead: isCacheRead(options),
+        isKept: isCacheKept(options),
+    });
     const replayed = await replayKeptCrashes(walked, kept.value.filter((token) => isTokenSelected(options, token)), plan.answers, {
         workers,
         createWorker: (): IWorker => environment.createWorker(),
@@ -361,16 +364,25 @@ export function selectedShards(shards: IShard[], file: string | undefined): ISha
 }
 
 //
-// Whether the results cache is used: not with `--no-cache`, and not in a run narrowed with
-// `--file` or `--function`, which makes fewer calls than a run of the whole project and so must
-// neither load nor keep a whole file's result.
+// Whether the run reads stored results from the results cache: only when it keeps its own, and not
+// with `--no-cache`, which runs every file.
 //
-export function isCacheUsed(options: IOptions): boolean {
-    assert.equal(options.command, "run");
-    assert.equal(options.token, undefined);
+export function isCacheRead(options: IOptions): boolean {
     if (options.noCache) {
         return false;
     }
+    return isCacheKept(options);
+}
+
+//
+// Whether the run writes what it found to the results cache: not in a run narrowed with `--file` or
+// `--function`, which makes fewer calls than a run of the whole project and so must neither load
+// nor keep a whole file's result. A run with `--no-cache` keeps what it found in place of what was
+// stored, so a fresh run puts right a stored result that was wrong.
+//
+export function isCacheKept(options: IOptions): boolean {
+    assert.equal(options.command, "run");
+    assert.equal(options.token, undefined);
     if (options.file) {
         return false;
     }
@@ -427,13 +439,15 @@ export function isNamed(names: { name: string; asked: string }): boolean {
 }
 
 //
-// What the results cache holds for `shards`: the key of each and the stored result of each that
-// can be used as it is. With the cache not used every shard runs.
+// What the results cache holds for `shards`: the key of each, when the run keeps its results, and
+// the stored result of each that can be used as it is, when the run reads them. A run that reads no
+// stored result runs every shard.
 //
-export async function planCache(environment: IRunEnvironment, shards: IShard[], isUsed: boolean): Promise<ICachePlan> {
-    if (!isUsed) {
+export async function planCache(environment: IRunEnvironment, shards: IShard[], use: { isRead: boolean; isKept: boolean }): Promise<ICachePlan> {
+    if (use.isRead) assert(use.isKept, "A run reads stored results only when it keeps its own.");
+    if (!use.isKept) {
         return {
-            isUsed,
+            isKept: false,
             keys: new Map(),
             entries: shards.map(() => undefined),
             answers: new Map(),
@@ -450,16 +464,28 @@ export async function planCache(environment: IRunEnvironment, shards: IShard[], 
     for (const shard of shards) {
         const key = await keyOfShard(inputs, shard);
         keys.set(shard.file, key);
+        if (!use.isRead) {
+            continue;
+        }
         units.push({
             file: shard.file,
             key,
             entry: await readEntryFile(environment.files, resultsDirectoryOf(root), shard.file),
         });
     }
+    assert.equal(keys.size, shards.length);
+    if (!use.isRead) {
+        return {
+            isKept: true,
+            keys,
+            entries: shards.map(() => undefined),
+            answers: new Map(),
+        };
+    }
     const toRun = unitsToRun(units);
     assert.equal(toRun.length, shards.length);
     return {
-        isUsed,
+        isKept: true,
         keys,
         entries: units.map((unit, position) => toRun[position] ? undefined : unit.entry),
         answers: answersByToken(units.flatMap((unit) => storedAnswers(unit))),
@@ -530,11 +556,13 @@ export function joinResults(plan: ICachePlan, ran: IShardResult[]): IShardResult
 
 //
 // Stores the result of every shard, with the shards whose calls exercised its code paths in this
-// run and the answers of its kept crashes, when the cache is used. Every shard's is written, the
-// loaded ones too, because a shard that ran may now exercise code paths of one that did not.
+// run and the answers of its kept crashes, when the run keeps its results. Every shard's is
+// written, the loaded ones too, because a shard that ran may now exercise code paths of one that
+// did not. A shard that failed to open is left out, because how busy the machine was decides that
+// as much as the code does, so the next run opens it again.
 //
 export async function keepResults(environment: IRunEnvironment, plan: ICachePlan, results: IShardResult[], replays: ICallAnswer[]): Promise<void> {
-    if (!plan.isUsed) {
+    if (!plan.isKept) {
         return;
     }
     assert.equal(plan.keys.size, results.length);
@@ -546,6 +574,9 @@ export async function keepResults(environment: IRunEnvironment, plan: ICachePlan
         const contributing = contributors.get(file);
         assert(key, `${file} ran with no key.`);
         assert(contributing, `${file} has no contributors, and it contributes to itself.`);
+        if (result.facts.isOpenFailed) {
+            continue;
+        }
         await writeEntryFile(environment.files, directory, {
             file,
             key,

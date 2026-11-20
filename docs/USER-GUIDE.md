@@ -103,7 +103,7 @@ Type these after `npx flt` on the command line, for example `npx flt --file src/
 - `--replay "<token>"` reproduces a failure Faultline already reported.
 - `--workers <n>` sets how many workers run at once. By default there is one per processor core less two, and at least one, so two cores are left for the rest of the machine. The report is the same whatever the number.
 - `--full-report` prints a block for every source file with a line for every function: whether all its code paths were exercised, how many and how many calls were made. Without it the run prints the totals and the checklist only.
-- `--no-cache` executes every file and keeps no results (see below).
+- `--no-cache` executes every file and keeps what it found in place of the kept results (see below).
 - The environment variable `FAULTLINE_OPEN_LIMIT_MS` sets how long, in milliseconds, opening a file may take before Faultline reports its top level as a call that never returned. It is 30000 when not set. Any value that is not a whole number from 1 up is refused with a sentence and exit 1.
 - The environment variable `FAULTLINE_CALL_LIMIT_MS` sets how long, in milliseconds, a call may wait before Faultline reports it as a call that never returned. It is 10000 when not set. Any value that is not a whole number from 1 up is refused with a sentence and exit 1.
 
@@ -137,7 +137,8 @@ With `--full-report` (below), the block of each source file whose result came fr
     MISS isMagic                          2/3 code paths, 5 calls
 ```
 
-- `npx flt --no-cache` executes every file and keeps no results.
+- `npx flt --no-cache` executes every file without loading any kept result, then keeps what it found in place of the kept results, so the next run loads what this run found.
+- A file that failed to open, because opening it ran past `FAULTLINE_OPEN_LIMIT_MS` or the process opening it ended, is reported but its result is not kept, because a busy machine can make a file fail to open as well as its code can. The next run opens it again.
 - `npx flt clear` throws away every kept result and every compiled file, so the next run compiles and executes every file. It runs no fault tests itself.
 - Faultline also keeps what the TypeScript compiler worked out for each file in `node_modules/.cache/faultline/compiled/`, so a file that has not changed, and none of whose imports, compiler options, lockfile or Faultline code has changed, is not compiled again. `--no-cache` still uses it.
 - A new version of Faultline executes every file on its first run, because the results kept by the version before it are not used.

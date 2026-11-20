@@ -19,18 +19,20 @@ import type { IOutput } from "../report/output.ts";
 import type { IShardResult } from "./explore.ts";
 import { judgeFailedOpen, type FailureKind, type ICallAnswer, type IFailure } from "./judge.ts";
 import type { ICallResult, IOpenRequest, IShardFacts } from "./messages.ts";
-import { resultsDirectoryOf } from "./results-cache.ts";
+import { entryPath, resultsDirectoryOf } from "./results-cache.ts";
 import {
     answersByToken,
     countCall,
     failureView,
     hasSubject,
-    isCacheUsed,
+    isCacheKept,
+    isCacheRead,
     isNamed,
     isReplayedForView,
     isTokenOf,
     isTokenSelected,
     joinResults,
+    keepResults,
     narrowFacts,
     planCache,
     progressEveryMs,
@@ -177,6 +179,7 @@ export function sourceFacts(): IShardFacts {
         uncallable: [],
         simProblems: [],
         loadProblem: undefined,
+        isOpenFailed: false,
     };
 }
 
@@ -258,6 +261,7 @@ export function failedOpenScript(): IScript {
             }],
             paths: [],
             loadProblem: "The child process opening src/a.ts ended with exit code 134.",
+            isOpenFailed: true,
         }]]),
         answer: (token: string) => answerOf(token, [], [judgeFailedOpen("src/a.ts", "The call to (top level)", "with exit code 134", token)]),
         log: [],
@@ -409,6 +413,19 @@ describe("runProject", () => {
         assert.equal(files.files.get("/project/node_modules/.cache/faultline/crashes.txt") ?? "", "");
     });
 
+    test("a file that fails to open keeps no result, so the next run opens it again and keeps what it finds", async () => {
+        const files = projectFiles({});
+        const failed = await runWith(files, failedOpenScript(), defaultOptions());
+        assert.equal(failed.code, 1);
+        assert(!files.files.has(entryPath(resultsDirectoryOf(root), "src/a.ts")));
+        const script = passingScript();
+        const ran = await runWith(files, script, defaultOptions());
+        assert.equal(ran.code, 0);
+        assert(script.log.includes("open src/a.ts"));
+        assert(!ran.output.lines.some((line) => line.startsWith("  Cached ")));
+        assert(files.files.has(entryPath(resultsDirectoryOf(root), "src/a.ts")));
+    });
+
     test("a later run replays the kept crash first and reports it once", async () => {
         const files = projectFiles({});
         await runWith(files, crashingScript(), optionsWith({
@@ -481,10 +498,31 @@ describe("runProject", () => {
         assert(!ran.output.lines.some((line) => line.startsWith("  Cached ")));
     });
 
-    test("--no-cache runs every file and keeps no results", async () => {
+    test("--no-cache runs every file and keeps what it found in place of the stored results", async () => {
+        const files = projectFiles({});
+        const stale = await runWith(files, missingScript(), defaultOptions());
+        assert.equal(stale.code, 1);
+        const fresh = passingScript();
+        const ran = await runWith(files, fresh, optionsWith({
+            noCache: true,
+        }));
+        assert.equal(ran.code, 0);
+        assert(fresh.log.includes("open src/a.ts"));
+        assert(!ran.output.lines.some((line) => line.startsWith("  Cached ")));
+        const script = passingScript();
+        const later = await runWith(files, script, defaultOptions());
+        assert.deepEqual(script.log, []);
+        assert.equal(later.code, 0);
+        assert(later.output.lines.includes("  Cached 1 source file, 0 sim files."));
+    });
+
+    test("--file and --function keep no results", async () => {
         const files = projectFiles({});
         await runWith(files, passingScript(), optionsWith({
-            noCache: true,
+            file: "src/a.ts",
+        }));
+        await runWith(files, passingScript(), optionsWith({
+            functionName: "f",
         }));
         assert(![...files.files.keys()].some((file) => file.startsWith(resultsDirectoryOf(root))));
     });
@@ -617,16 +655,29 @@ describe("selectedShards", () => {
     });
 });
 
-describe("isCacheUsed", () => {
-    test("the cache is used only by a run of the whole project without --no-cache", () => {
-        assert.equal(isCacheUsed(defaultOptions()), true);
-        assert.equal(isCacheUsed(optionsWith({
+describe("isCacheRead and isCacheKept", () => {
+    test("stored results are read only by a run of the whole project without --no-cache", () => {
+        assert.equal(isCacheRead(defaultOptions()), true);
+        assert.equal(isCacheRead(optionsWith({
             noCache: true,
         })), false);
-        assert.equal(isCacheUsed(optionsWith({
+        assert.equal(isCacheRead(optionsWith({
             file: "src/a.ts",
         })), false);
-        assert.equal(isCacheUsed(optionsWith({
+        assert.equal(isCacheRead(optionsWith({
+            functionName: "f",
+        })), false);
+    });
+
+    test("results are kept by a run of the whole project, --no-cache too", () => {
+        assert.equal(isCacheKept(defaultOptions()), true);
+        assert.equal(isCacheKept(optionsWith({
+            noCache: true,
+        })), true);
+        assert.equal(isCacheKept(optionsWith({
+            file: "src/a.ts",
+        })), false);
+        assert.equal(isCacheKept(optionsWith({
             functionName: "f",
         })), false);
     });
@@ -670,13 +721,16 @@ describe("isTokenSelected and isNamed", () => {
 });
 
 describe("planCache", () => {
-    test("with the cache not used every shard runs and no key is made", async () => {
+    test("a run that keeps nothing runs every shard and makes no key", async () => {
         const plan = await planCache(environmentOf(projectFiles({}), passingScript(), new KeptOutput()), [{
             file: "src/a.ts",
             sims: [],
-        }], false);
+        }], {
+            isRead: false,
+            isKept: false,
+        });
         assert.deepEqual(plan, {
-            isUsed: false,
+            isKept: false,
             keys: new Map(),
             entries: [undefined],
             answers: new Map(),
@@ -687,11 +741,74 @@ describe("planCache", () => {
         const plan = await planCache(environmentOf(projectFiles({}), passingScript(), new KeptOutput()), [{
             file: "src/a.ts",
             sims: [],
-        }], true);
-        assert.equal(plan.isUsed, true);
+        }], {
+            isRead: true,
+            isKept: true,
+        });
+        assert.equal(plan.isKept, true);
         assert.equal(plan.keys.size, 1);
         assert.deepEqual(plan.entries, [undefined]);
         assert.deepEqual(plan.answers, new Map());
+    });
+
+    test("a run that keeps without reading runs every shard past a usable stored result, and each has a key", async () => {
+        const files = projectFiles({});
+        await runWith(files, crashingScript(), defaultOptions());
+        const environment = environmentOf(files, passingScript(), new KeptOutput());
+        const shards = [{
+            file: "src/a.ts",
+            sims: [],
+        }];
+        const read = await planCache(environment, shards, {
+            isRead: true,
+            isKept: true,
+        });
+        assert(read.entries[0] !== undefined);
+        assert.equal(read.answers.size, 1);
+        const unread = await planCache(environment, shards, {
+            isRead: false,
+            isKept: true,
+        });
+        assert.equal(unread.isKept, true);
+        assert.deepEqual(unread.keys, read.keys);
+        assert.deepEqual(unread.entries, [undefined]);
+        assert.deepEqual(unread.answers, new Map());
+    });
+
+    test("reading stored results without keeping the run's own is a defect in the run", async () => {
+        await assert.rejects(planCache(environmentOf(projectFiles({}), passingScript(), new KeptOutput()), [], {
+            isRead: true,
+            isKept: false,
+        }), assert.AssertionError);
+    });
+});
+
+describe("keepResults", () => {
+    test("every shard's result is written but that of a shard that failed to open", async () => {
+        const files = projectFiles({});
+        const opened = resultOf("src/a.ts");
+        const failed = resultOf("src/b.ts");
+        failed.facts.isOpenFailed = true;
+        await keepResults(environmentOf(files, passingScript(), new KeptOutput()), {
+            isKept: true,
+            keys: new Map([["src/a.ts", "ka"], ["src/b.ts", "kb"]]),
+            entries: [undefined, undefined],
+            answers: new Map(),
+        }, [opened, failed], []);
+        const directory = resultsDirectoryOf(root);
+        assert(files.files.has(entryPath(directory, "src/a.ts")));
+        assert(!files.files.has(entryPath(directory, "src/b.ts")));
+    });
+
+    test("a run that keeps nothing writes no result", async () => {
+        const files = projectFiles({});
+        await keepResults(environmentOf(files, passingScript(), new KeptOutput()), {
+            isKept: false,
+            keys: new Map(),
+            entries: [undefined],
+            answers: new Map(),
+        }, [resultOf("src/a.ts")], []);
+        assert(![...files.files.keys()].some((file) => file.startsWith(resultsDirectoryOf(root))));
     });
 });
 
@@ -790,7 +907,7 @@ describe("joinResults", () => {
         const stored = resultOf("src/a.ts");
         const ran = [resultOf("src/b.ts"), resultOf("src/c.ts")];
         const joined = joinResults({
-            isUsed: true,
+            isKept: true,
             keys: new Map(),
             entries: [undefined, {
                 file: "src/a.ts",
@@ -806,13 +923,13 @@ describe("joinResults", () => {
 
     test("a result left over or missing is a defect in the run", () => {
         assert.throws(() => joinResults({
-            isUsed: false,
+            isKept: false,
             keys: new Map(),
             entries: [undefined],
             answers: new Map(),
         }, []), assert.AssertionError);
         assert.throws(() => joinResults({
-            isUsed: false,
+            isKept: false,
             keys: new Map(),
             entries: [],
             answers: new Map(),
